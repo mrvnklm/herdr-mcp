@@ -104,3 +104,24 @@ func TestMaxWaitReachesSocketThroughDispatch(t *testing.T) {
 		t.Fatalf("result = %s", allNotes(result))
 	}
 }
+
+func TestMaxWaitDropsPromptWait(t *testing.T) {
+	server := &Server{maxWaitMS: 18000}
+	got, note := server.limitWait("agent.prompt", json.RawMessage(`{"target":"w1:p1","text":"hi","wait":{"timeout_ms":600000}}`))
+	var decoded map[string]any
+	if err := json.Unmarshal(got, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if _, present := decoded["wait"]; present || decoded["text"] != "hi" || decoded["target"] != "w1:p1" || note == "" {
+		t.Fatalf("limitWait = %s, %q", got, note)
+	}
+	plain := `{"target":"w1:p1","text":"hi"}`
+	if got, note := server.limitWait("agent.prompt", json.RawMessage(plain)); string(got) != plain || note != "" {
+		t.Fatalf("no wait: limitWait = %s, %q", got, note)
+	}
+	off := &Server{}
+	waiting := `{"target":"w1:p1","text":"hi","wait":{"timeout_ms":1}}`
+	if got, note := off.limitWait("agent.prompt", json.RawMessage(waiting)); string(got) != waiting || note != "" {
+		t.Fatalf("flag off: limitWait = %s, %q", got, note)
+	}
+}

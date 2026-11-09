@@ -49,17 +49,32 @@ func (s *Server) waitThroughLaunch(ctx context.Context, caller herdr.Transport, 
 	return nil
 }
 
-// limitWait forces timeout_ms on agent.wait to a positive integer no larger
+// limitWait drops the wait of agent.prompt and forces timeout_ms on agent.wait
+// to a positive integer no larger
 // than the configured maximum. Anything else, 0 and null included, would fall
 // through to the socket's 15-minute budget. It runs before waitThroughLaunch,
 // which reads the same argument.
 func (s *Server) limitWait(method string, params json.RawMessage) (json.RawMessage, string) {
-	if method != "agent.wait" || s.maxWaitMS <= 0 {
+	if (method != "agent.wait" && method != "agent.prompt") || s.maxWaitMS <= 0 {
 		return params, ""
 	}
 	var decoded map[string]any
 	if json.Unmarshal(params, &decoded) != nil || decoded == nil {
 		return params, ""
+	}
+	if method == "agent.prompt" {
+		// A waiting prompt runs for as long as the agent's turn, far past what a
+		// bridge with a wait limit can hold open. The prompt is sent either way;
+		// only the wait is dropped.
+		if decoded["wait"] == nil {
+			return params, ""
+		}
+		delete(decoded, "wait")
+		encoded, err := json.Marshal(decoded)
+		if err != nil {
+			return params, ""
+		}
+		return encoded, "Sent without waiting: this bridge does not hold a call open for a whole turn. Use agent_wait, then agent_read for the answer."
 	}
 	requested, isNumber := decoded["timeout_ms"].(float64)
 	if isNumber && requested > 0 && requested <= float64(s.maxWaitMS) && requested == math.Trunc(requested) {
