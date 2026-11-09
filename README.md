@@ -500,6 +500,8 @@ Common configuration:
 | `--machine-idle` | `HERDR_MCP_MACHINE_IDLE` | `15m` |
 | `--schema-refresh` | `HERDR_MCP_SCHEMA_REFRESH` | `5m` |
 | `--compact-results` | `HERDR_MCP_COMPACT_RESULTS` | `false` |
+| `--read-default-lines` | `HERDR_MCP_READ_DEFAULT_LINES` | `0` (Herdr's default) |
+| `--read-max-lines` | `HERDR_MCP_READ_MAX_LINES` | `0` (no cap) |
 
 `serve` refuses wildcard/public listeners and unauthenticated private listeners.
 Use native authenticated private HTTPS, or Cloudflare Access with a loopback origin.

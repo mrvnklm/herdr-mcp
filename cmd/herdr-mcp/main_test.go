@@ -82,3 +82,31 @@ func TestHTTPFlagsDoNotAcceptCredentialValues(t *testing.T) {
 		t.Fatal("serve flags inconsistent")
 	}
 }
+
+// The result-size flags are opt-in: without them the bridge behaves as upstream.
+func TestResultSizeFlagsDefaultOffAndReadEnvironment(t *testing.T) {
+	for _, name := range []string{"HERDR_MCP_COMPACT_RESULTS", "HERDR_MCP_READ_DEFAULT_LINES", "HERDR_MCP_READ_MAX_LINES"} {
+		t.Setenv(name, "")
+	}
+	common := addCommonFlags(flag.NewFlagSet("default", flag.ContinueOnError))
+	if common.compactResults || common.readDefault != 0 || common.readMax != 0 {
+		t.Fatalf("defaults = compact %v, read default %d, read max %d", common.compactResults, common.readDefault, common.readMax)
+	}
+
+	t.Setenv("HERDR_MCP_COMPACT_RESULTS", "true")
+	t.Setenv("HERDR_MCP_READ_DEFAULT_LINES", "40")
+	t.Setenv("HERDR_MCP_READ_MAX_LINES", "120")
+	common = addCommonFlags(flag.NewFlagSet("env", flag.ContinueOnError))
+	if !common.compactResults || common.readDefault != 40 || common.readMax != 120 {
+		t.Fatalf("from environment = compact %v, read default %d, read max %d", common.compactResults, common.readDefault, common.readMax)
+	}
+
+	flags := flag.NewFlagSet("flags", flag.ContinueOnError)
+	common = addCommonFlags(flags)
+	if err := flags.Parse([]string{"--compact-results=false", "--read-default-lines", "10", "--read-max-lines", "20"}); err != nil {
+		t.Fatal(err)
+	}
+	if common.compactResults || common.readDefault != 10 || common.readMax != 20 {
+		t.Fatalf("from flags = compact %v, read default %d, read max %d", common.compactResults, common.readDefault, common.readMax)
+	}
+}

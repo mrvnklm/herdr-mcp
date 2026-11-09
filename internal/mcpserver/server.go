@@ -63,6 +63,10 @@ type Server struct {
 	// compactResults drops structuredContent from tools without an outputSchema
 	// and shortens agent.list to a summary.
 	compactResults bool
+	// readDefaultLines and readMaxLines bound "lines" on agent.read and
+	// pane.read; zero leaves the argument as the caller sent it.
+	readDefaultLines int
+	readMaxLines     int
 
 	// mu guards the fields Reload swaps while calls are in flight.
 	mu      sync.Mutex
@@ -86,6 +90,10 @@ type Options struct {
 	// as text and once as structuredContent. It also reduces agent_list to a
 	// per-agent summary and strips whitespace from every result.
 	CompactResults bool
+	// ReadDefaultLines fills in "lines" when an agent_read or pane_read call
+	// omits it, and ReadMaxLines caps it. Zero disables either.
+	ReadDefaultLines int
+	ReadMaxLines     int
 }
 
 // New registers one MCP tool for every selected method in the Herdr request schema.
@@ -105,7 +113,12 @@ func New(options Options) (*Server, error) {
 		deny:     options.Deny,
 		toolSet:  map[string]struct{}{},
 
-		compactResults: options.CompactResults,
+		compactResults:   options.CompactResults,
+		readDefaultLines: options.ReadDefaultLines,
+		readMaxLines:     options.ReadMaxLines,
+	}
+	if server.readMaxLines > 0 && server.readDefaultLines > server.readMaxLines {
+		server.readDefaultLines = server.readMaxLines
 	}
 	if err := server.register(options.Schema); err != nil {
 		return nil, err
@@ -132,6 +145,9 @@ func (s *Server) register(schema *herdr.Schema) error {
 		definition := method
 		if s.Machines != nil && routable(definition.Method) {
 			definition.InputSchema = withMachineArgument(definition.InputSchema)
+		}
+		if defaultLines, maxLines := s.readLineLimits(definition.Method); defaultLines > 0 || maxLines > 0 {
+			definition.InputSchema = withReadLineLimits(definition.InputSchema, defaultLines, maxLines)
 		}
 		fresh[definition.ToolName] = struct{}{}
 		tool := &mcp.Tool{
@@ -259,6 +275,10 @@ func (s *Server) dispatch(ctx context.Context, method string, input map[string]a
 	selector, normalized, err := splitMachine(normalized)
 	if err != nil {
 		return errorResult(method, err, notes...)
+	}
+	normalized, linesNote := s.limitReadLines(method, normalized)
+	if linesNote != "" {
+		notes = append(notes, linesNote)
 	}
 	caller, err := s.callerFor(ctx, method, selector)
 	if err != nil {
