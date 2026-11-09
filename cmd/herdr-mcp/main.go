@@ -285,6 +285,7 @@ func addCommonFlags(flags *flag.FlagSet) *commonFlags {
 	common := &commonFlags{}
 	flags.StringVar(&common.socket, "socket", defaultSocket, "Herdr API socket path")
 	flags.StringVar(&common.herdrBinary, "herdr-bin", envDefault("HERDR_BIN", "herdr"), "Herdr binary used to load the API schema")
+	flags.StringVar(&common.allowMethods, "allow-methods", os.Getenv("HERDR_MCP_ALLOW_METHODS"), "comma-separated method globs to expose (default: all)")
 	flags.StringVar(&common.denyMethods, "deny-methods", envDefault("HERDR_MCP_DENY_METHODS", defaultDenyMethods), "comma-separated method globs to omit")
 	flags.IntVar(&common.concurrency, "max-concurrent", envInt("HERDR_MCP_MAX_CONCURRENT", 8), "simultaneous Herdr calls; further calls queue")
 	flags.IntVar(&common.longConcurrency, "max-long-concurrent", envInt("HERDR_MCP_MAX_LONG_CONCURRENT", 64), "simultaneous long-poll calls (agent_wait, events_wait, pane_wait_for_output, agent_prompt)")
