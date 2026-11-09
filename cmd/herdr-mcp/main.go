@@ -43,6 +43,7 @@ type commonFlags struct {
 	machines        bool
 	machineIdle     time.Duration
 	schemaRefresh   time.Duration
+	compactResults  bool
 }
 
 // runtimeBundle is what a successful startup produced, including the parts a
@@ -294,6 +295,7 @@ func addCommonFlags(flags *flag.FlagSet) *commonFlags {
 	flags.BoolVar(&common.machines, "machines", envBool("HERDR_MCP_MACHINES", true), "accept a \"machine\" argument routing calls to local sessions and saved Herdr SSH machines")
 	flags.DurationVar(&common.machineIdle, "machine-idle", envDuration("HERDR_MCP_MACHINE_IDLE", 15*time.Minute), "disconnect a saved machine untouched for this long; negative keeps it until shutdown")
 	flags.DurationVar(&common.schemaRefresh, "schema-refresh", envDuration("HERDR_MCP_SCHEMA_REFRESH", 5*time.Minute), "how often to re-read Herdr's schema and reload the tools if it changed; zero disables")
+	flags.BoolVar(&common.compactResults, "compact-results", envBool("HERDR_MCP_COMPACT_RESULTS", false), "return only text content for tools without an outputSchema instead of repeating it as structuredContent")
 	return common
 }
 
@@ -366,6 +368,8 @@ func buildRuntime(ctx context.Context, flags commonFlags, strict bool) (*runtime
 		Version: version,
 		Allow:   splitCSV(flags.allowMethods),
 		Deny:    splitCSV(flags.denyMethods),
+
+		CompactResults: flags.compactResults,
 	}
 	if flags.machines {
 		runtimeDir, dirErr := herdr.DefaultRuntimeDir()

@@ -126,7 +126,7 @@ var machineListSchema = map[string]any{
 func (s *Server) registerMachineList() {
 	readOnly := true
 	closedWorld := false
-	s.MCP.AddTool(&mcp.Tool{
+	tool := &mcp.Tool{
 		Name:  machineListTool,
 		Title: "Machine List",
 		Description: "List local Herdr sessions and saved SSH machines, including their sessions or a per-machine discovery error. Discovery is live and remote listing has a five-second budget. " +
@@ -137,8 +137,9 @@ func (s *Server) registerMachineList() {
 			IdempotentHint: readOnly,
 			OpenWorldHint:  &closedWorld,
 		},
-	}, func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return s.listMachines(ctx), nil
+	}
+	s.MCP.AddTool(tool, func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return s.trimStructured(tool, s.listMachines(ctx)), nil
 	})
 }
 

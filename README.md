@@ -499,6 +499,7 @@ Common configuration:
 | `--machines` | `HERDR_MCP_MACHINES` | `true` |
 | `--machine-idle` | `HERDR_MCP_MACHINE_IDLE` | `15m` |
 | `--schema-refresh` | `HERDR_MCP_SCHEMA_REFRESH` | `5m` |
+| `--compact-results` | `HERDR_MCP_COMPACT_RESULTS` | `false` |
 
 `serve` refuses wildcard/public listeners and unauthenticated private listeners.
 Use native authenticated private HTTPS, or Cloudflare Access with a loopback origin.

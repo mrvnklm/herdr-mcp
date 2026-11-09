@@ -60,6 +60,9 @@ type Server struct {
 	// session. Nil disables routing and leaves the tool schemas local-only.
 	Machines MachineRouter
 
+	// compactResults drops structuredContent from tools without an outputSchema.
+	compactResults bool
+
 	// mu guards the fields Reload swaps while calls are in flight.
 	mu      sync.Mutex
 	allow   []string
@@ -77,6 +80,10 @@ type Options struct {
 	// Machines, when set, adds a "machine" argument to every routable tool and
 	// dispatches those calls to the selected local or remote session.
 	Machines MachineRouter
+	// CompactResults returns only the text content for tools that declare no
+	// outputSchema. Without it every result carries the same JSON twice, once
+	// as text and once as structuredContent.
+	CompactResults bool
 }
 
 // New registers one MCP tool for every selected method in the Herdr request schema.
@@ -95,6 +102,8 @@ func New(options Options) (*Server, error) {
 		allow:    options.Allow,
 		deny:     options.Deny,
 		toolSet:  map[string]struct{}{},
+
+		compactResults: options.CompactResults,
 	}
 	if err := server.register(options.Schema); err != nil {
 		return nil, err
@@ -123,14 +132,15 @@ func (s *Server) register(schema *herdr.Schema) error {
 			definition.InputSchema = withMachineArgument(definition.InputSchema)
 		}
 		fresh[definition.ToolName] = struct{}{}
-		s.MCP.AddTool(&mcp.Tool{
+		tool := &mcp.Tool{
 			Name:        definition.ToolName,
 			Title:       toolTitle(definition.Method),
 			Description: toolDescription(definition.Method, definition.InputSchema),
 			InputSchema: definition.InputSchema,
 			Annotations: annotations(definition.Method),
-		}, func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			return s.call(ctx, definition.Method, definition.InputSchema, request.Params.Arguments), nil
+		}
+		s.MCP.AddTool(tool, func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return s.trimStructured(tool, s.call(ctx, definition.Method, definition.InputSchema, request.Params.Arguments)), nil
 		})
 	}
 	// Anything the previous schema had and this one does not must go, or the
@@ -287,6 +297,17 @@ func (s *Server) dispatch(ctx context.Context, method string, input map[string]a
 		Content:           content,
 		StructuredContent: structured,
 	}
+}
+
+// trimStructured drops structuredContent when CompactResults is set and the
+// tool declares no outputSchema. The MCP spec requires structured content only
+// for tools with an outputSchema; for every other tool it repeats the text
+// block byte for byte, and a client billed per token pays for it twice.
+func (s *Server) trimStructured(tool *mcp.Tool, result *mcp.CallToolResult) *mcp.CallToolResult {
+	if s.compactResults && tool.OutputSchema == nil {
+		result.StructuredContent = nil
+	}
+	return result
 }
 
 func errorResult(method string, err error, notes ...string) *mcp.CallToolResult {
