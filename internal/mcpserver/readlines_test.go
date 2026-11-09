@@ -157,3 +157,66 @@ func TestReadDefaultLinesIsClampedToMax(t *testing.T) {
 		t.Fatalf("an omitted lines produced a note: %s", allNotes(result))
 	}
 }
+
+// A cap alone must also bound an omitted lines, or leaving lines out would
+// return Herdr's own default (80 lines, measured on 2026-11-09) past a smaller
+// cap. The schema then states the cap as the default too.
+func TestReadMaxLinesAloneBoundsOmittedLines(t *testing.T) {
+	transport := &paramsTransport{}
+	session := connectTestClient(t, newAgentToolsServer(t, Options{Client: transport, ReadMaxLines: 50}))
+
+	for _, call := range []struct {
+		name  string
+		lines any
+		send  bool
+		want  float64
+	}{
+		{name: "omitted", want: 50},
+		{name: "null", lines: nil, send: true, want: 50},
+		{name: "under the cap", lines: 20, send: true, want: 20},
+	} {
+		arguments := map[string]any{"target": "reviewer", "source": "recent"}
+		if call.send {
+			arguments["lines"] = call.lines
+		}
+		result := callTestTool(t, session, "agent_read", arguments)
+		if got := transport.lastLines(t); got != call.want {
+			t.Fatalf("%s: lines sent to Herdr = %v, want %v", call.name, got, call.want)
+		}
+		if len(result.Content) != 1 {
+			t.Fatalf("%s: unexpected note: %s", call.name, allNotes(result))
+		}
+	}
+
+	lines := linesSchema(t, session, "agent_read")
+	if lines["default"] != float64(50) || lines["maximum"] != float64(50) {
+		t.Fatalf("lines schema = %v", lines)
+	}
+	description, _ := lines["description"].(string)
+	for _, want := range []string{"Defaults to 50", "At most 50"} {
+		if !strings.Contains(description, want) {
+			t.Fatalf("lines description %q lacks %q", description, want)
+		}
+	}
+}
+
+// A default without a cap fills in an omitted lines but leaves a large
+// explicit request alone, and the schema states no maximum.
+func TestReadDefaultLinesAloneDoesNotCap(t *testing.T) {
+	transport := &paramsTransport{}
+	session := connectTestClient(t, newAgentToolsServer(t, Options{Client: transport, ReadDefaultLines: 40}))
+	callTestTool(t, session, "agent_read", map[string]any{"target": "reviewer", "source": "recent"})
+	if got := transport.lastLines(t); got != float64(40) {
+		t.Fatalf("omitted lines sent to Herdr = %v, want 40", got)
+	}
+	result := callTestTool(t, session, "agent_read", map[string]any{"target": "reviewer", "source": "recent", "lines": 5000})
+	if got := transport.lastLines(t); got != float64(5000) {
+		t.Fatalf("explicit lines sent to Herdr = %v, want 5000", got)
+	}
+	if len(result.Content) != 1 {
+		t.Fatalf("unexpected note without a cap: %s", allNotes(result))
+	}
+	if _, ok := linesSchema(t, session, "agent_read")["maximum"]; ok {
+		t.Fatal("lines schema gained a maximum without --read-max-lines")
+	}
+}

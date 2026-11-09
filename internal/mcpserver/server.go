@@ -91,7 +91,8 @@ type Options struct {
 	// per-agent summary and strips whitespace from every result.
 	CompactResults bool
 	// ReadDefaultLines fills in "lines" when an agent_read or pane_read call
-	// omits it, and ReadMaxLines caps it. Zero disables either.
+	// omits it, and ReadMaxLines caps it. Zero disables either; with only
+	// ReadMaxLines set, an omitted lines becomes ReadMaxLines.
 	ReadDefaultLines int
 	ReadMaxLines     int
 }
@@ -117,7 +118,10 @@ func New(options Options) (*Server, error) {
 		readDefaultLines: options.ReadDefaultLines,
 		readMaxLines:     options.ReadMaxLines,
 	}
-	if server.readMaxLines > 0 && server.readDefaultLines > server.readMaxLines {
+	// A cap without a default must still bound an omitted lines: Herdr's own
+	// default is not part of its schema and may exceed the cap. The default
+	// therefore falls back to the cap, and is never above it.
+	if server.readMaxLines > 0 && (server.readDefaultLines <= 0 || server.readDefaultLines > server.readMaxLines) {
 		server.readDefaultLines = server.readMaxLines
 	}
 	if err := server.register(options.Schema); err != nil {
