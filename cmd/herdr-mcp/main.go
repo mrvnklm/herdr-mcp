@@ -636,6 +636,7 @@ func addHTTPFlags(flags *flag.FlagSet, defaultListen string, useEnvironment ...b
 	flags.StringVar(&c.TLSKeyFile, "tls-key-file", getenv("HERDR_MCP_TLS_KEY_FILE"), "PEM server private-key file")
 	flags.StringVar(&c.AccessTeam, "access-team-domain", getenv("CF_ACCESS_TEAM_DOMAIN"), "Cloudflare Access team domain (exclusive with bearer)")
 	flags.StringVar(&c.AccessAudience, "access-aud", getenv("CF_ACCESS_AUD"), "Cloudflare Access application audience")
+	flags.StringVar(&c.AccessAllowedEmails, "access-allowed-emails", getenv("CF_ACCESS_ALLOWED_EMAILS"), "comma-separated emails allowed in the Access assertion; a missing or other email is rejected")
 	hosts := flags.String("allowed-hosts", getenv("HERDR_MCP_ALLOWED_HOSTS"), "comma-separated additional exact Host authorities, including port if used")
 	return c, hosts
 }

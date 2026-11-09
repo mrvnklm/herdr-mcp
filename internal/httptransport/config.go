@@ -32,11 +32,15 @@ type Config struct {
 	AllowedHosts    []string
 	AccessTeam      string
 	AccessAudience  string
-	LookupEnv       func(string) (string, bool)
-	BearerFileSet   bool
-	TLSSet          bool
-	Explicit        map[string]bool
-	RequireAuth     bool
+	// AccessAllowedEmails is a comma-separated allow-list for the Access email
+	// claim. Once set it can only ever narrow access: an empty list or a
+	// transport without Access is a startup error.
+	AccessAllowedEmails string
+	LookupEnv           func(string) (string, bool)
+	BearerFileSet       bool
+	TLSSet              bool
+	Explicit            map[string]bool
+	RequireAuth         bool
 }
 
 // Transport is immutable after startup. Credential and certificate rotation
@@ -83,6 +87,14 @@ func New(c Config) (*Transport, error) {
 		var err error
 		t.access, err = access.NewValidator(c.AccessTeam, c.AccessAudience)
 		if err != nil {
+			return nil, err
+		}
+	}
+	if c.Explicit["access-allowed-emails"] || c.AccessAllowedEmails != "" {
+		if t.access == nil {
+			return nil, fmt.Errorf("--access-allowed-emails requires Cloudflare Access configuration")
+		}
+		if err := t.access.RestrictEmails(strings.Split(c.AccessAllowedEmails, ",")); err != nil {
 			return nil, err
 		}
 	}

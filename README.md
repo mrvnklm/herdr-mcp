@@ -492,6 +492,7 @@ Common configuration:
 | `--allowed-hosts` | `HERDR_MCP_ALLOWED_HOSTS` | bind authority and loopback aliases |
 | `--access-team-domain` | `CF_ACCESS_TEAM_DOMAIN` | unset |
 | `--access-aud` | `CF_ACCESS_AUD` | unset |
+| `--access-allowed-emails` | `CF_ACCESS_ALLOWED_EMAILS` | unset (any identity Access lets through) |
 | `--max-concurrent` | `HERDR_MCP_MAX_CONCURRENT` | `8` |
 | `--max-long-concurrent` | `HERDR_MCP_MAX_LONG_CONCURRENT` | `64` |
 | `--queue-depth` | `HERDR_MCP_QUEUE_DEPTH` | `256` |

@@ -368,3 +368,41 @@ func TestOriginRejectsEmptyQueryMarker(t *testing.T) {
 		t.Fatal("Origin with query marker accepted")
 	}
 }
+
+func TestAccessAllowedEmailsFailsClosedAtStartup(t *testing.T) {
+	noEnv := func(string) (string, bool) { return "", false }
+	withAccess := Config{
+		Listen:         "127.0.0.1:8091",
+		AccessTeam:     "team.cloudflareaccess.com",
+		AccessAudience: "aud",
+		AllowedHosts:   []string{"herdr.example.com"},
+		LookupEnv:      noEnv,
+	}
+
+	allowed := withAccess
+	allowed.AccessAllowedEmails = "a@example.com"
+	transport, err := New(allowed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transport.access == nil {
+		t.Fatal("access validator missing")
+	}
+
+	empty := withAccess
+	empty.AccessAllowedEmails = " , "
+	if _, err := New(empty); err == nil {
+		t.Fatal("empty allow-list accepted")
+	}
+
+	explicitEmpty := withAccess
+	explicitEmpty.Explicit = map[string]bool{"access-allowed-emails": true}
+	if _, err := New(explicitEmpty); err == nil {
+		t.Fatal("explicitly empty flag accepted")
+	}
+
+	withoutAccess := Config{Listen: "127.0.0.1:8091", AccessAllowedEmails: "a@example.com", LookupEnv: noEnv}
+	if _, err := New(withoutAccess); err == nil {
+		t.Fatal("allow-list without Access configuration accepted")
+	}
+}

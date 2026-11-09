@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -30,9 +31,20 @@ type Validator struct {
 	certsURL string
 	client   *http.Client
 
+	// restrictEmails is the switch, separate from the map, so that an empty
+	// list can never read as "everyone may in".
+	restrictEmails bool
+	allowedEmails  map[string]bool
+
 	mu      sync.Mutex
 	keys    map[string]*rsa.PublicKey
 	expires time.Time
+}
+
+// accessClaims adds the identity claim Access sets for a signed-in user.
+type accessClaims struct {
+	jwt.RegisteredClaims
+	Email string `json:"email"`
 }
 
 type jwksDocument struct {
@@ -75,6 +87,27 @@ func NewValidator(teamDomain, audience string) (*Validator, error) {
 	}, nil
 }
 
+// RestrictEmails additionally requires the assertion's email claim to be one
+// of emails. Comparison ignores case and surrounding space.
+func (v *Validator) RestrictEmails(emails []string) error {
+	allowed := make(map[string]bool, len(emails))
+	for _, email := range emails {
+		if email = normalizeEmail(email); email != "" {
+			allowed[email] = true
+		}
+	}
+	if len(allowed) == 0 {
+		return fmt.Errorf("the Cloudflare Access email allow-list is empty")
+	}
+	v.restrictEmails = true
+	v.allowedEmails = allowed
+	return nil
+}
+
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
 // Middleware requires a valid Access assertion on every wrapped request.
 func (v *Validator) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -84,6 +117,10 @@ func (v *Validator) Middleware(next http.Handler) http.Handler {
 			return
 		}
 		if err := v.Validate(r.Context(), assertion); err != nil {
+			if v.restrictEmails {
+				// The reason only; the assertion is a bearer credential.
+				log.Printf("access: rejected assertion: %v", err)
+			}
 			http.Error(w, "invalid Cloudflare Access assertion", http.StatusUnauthorized)
 			return
 		}
@@ -91,9 +128,10 @@ func (v *Validator) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-// Validate checks signature, issuer, audience, and registered time claims.
+// Validate checks signature, issuer, audience, registered time claims and, when
+// restricted, the email claim.
 func (v *Validator) Validate(ctx context.Context, assertion string) error {
-	claims := &jwt.RegisteredClaims{}
+	claims := &accessClaims{}
 	token, err := jwt.ParseWithClaims(assertion, claims, func(token *jwt.Token) (any, error) {
 		if token.Method.Alg() != jwt.SigningMethodRS256.Alg() {
 			return nil, fmt.Errorf("unexpected signing algorithm %q", token.Method.Alg())
@@ -115,6 +153,15 @@ func (v *Validator) Validate(ctx context.Context, assertion string) error {
 	}
 	if !token.Valid {
 		return fmt.Errorf("verify Access JWT: token is invalid")
+	}
+	if v.restrictEmails {
+		email := normalizeEmail(claims.Email)
+		if email == "" {
+			return fmt.Errorf("email claim missing")
+		}
+		if !v.allowedEmails[email] {
+			return fmt.Errorf("email claim not in the allow-list")
+		}
 	}
 	return nil
 }

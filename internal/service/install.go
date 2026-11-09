@@ -274,6 +274,7 @@ func resolveHTTP(options Options, envPath string) (httptransport.Config, error) 
 		{"HERDR_MCP_TLS_KEY_FILE", "tls-key-file", &c.TLSKeyFile},
 		{"CF_ACCESS_TEAM_DOMAIN", "access-team-domain", &c.AccessTeam},
 		{"CF_ACCESS_AUD", "access-aud", &c.AccessAudience},
+		{"CF_ACCESS_ALLOWED_EMAILS", "access-allowed-emails", &c.AccessAllowedEmails},
 		{"HERDR_MCP_ALLOWED_HOSTS", "allowed-hosts", &options.AllowedHosts},
 	} {
 		if !c.Explicit[item.flag] && *item.target == "" {
@@ -396,6 +397,7 @@ func unitBody(result Result, herdrBinary, listen string, configs ...httptranspor
 			{"--allowed-hosts", strings.Join(c.AllowedHosts, ",")},
 			{"--access-team-domain", c.AccessTeam},
 			{"--access-aud", c.AccessAudience},
+			{"--access-allowed-emails", c.AccessAllowedEmails},
 		} {
 			if c.Explicit[strings.TrimPrefix(item.flag, "--")] || item.value != "" {
 				arguments += " " + item.flag + " " + quote(item.value)
