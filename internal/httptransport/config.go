@@ -19,7 +19,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/Orange-County-AI/herdr-mcp/internal/access"
+	"github.com/mrvnklm/herdr-mcp/internal/access"
 )
 
 // Config contains source locations, never a bearer credential. LookupEnv is

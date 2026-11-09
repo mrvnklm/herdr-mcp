@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Orange-County-AI/herdr-mcp/internal/herdr"
+	"github.com/mrvnklm/herdr-mcp/internal/herdr"
 )
 
 // With no agents running the summary is an empty object and agents an empty

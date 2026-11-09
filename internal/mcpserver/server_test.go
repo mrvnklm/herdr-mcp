@@ -1,3 +1,5 @@
+// Modified from Orange-County-AI/herdr-mcp in this fork. See "What this fork adds" in README.md.
+
 package mcpserver
 
 import (
@@ -9,8 +11,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Orange-County-AI/herdr-mcp/internal/herdr"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/mrvnklm/herdr-mcp/internal/herdr"
 )
 
 const bridgeSchema = `{

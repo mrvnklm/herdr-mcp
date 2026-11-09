@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Orange-County-AI/herdr-mcp/internal/herdr"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/mrvnklm/herdr-mcp/internal/herdr"
 )
 
 // connectTestClient serves server over in-memory transports and returns a

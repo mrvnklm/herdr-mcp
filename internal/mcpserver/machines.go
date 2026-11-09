@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Orange-County-AI/herdr-mcp/internal/herdr"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/mrvnklm/herdr-mcp/internal/herdr"
 )
 
 // machineArgument is the parameter that routes a call to another Herdr session.

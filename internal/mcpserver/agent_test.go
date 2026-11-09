@@ -1,3 +1,5 @@
+// Modified from Orange-County-AI/herdr-mcp in this fork. See "What this fork adds" in README.md.
+
 package mcpserver
 
 import (
@@ -5,7 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/Orange-County-AI/herdr-mcp/internal/herdr"
+	"github.com/mrvnklm/herdr-mcp/internal/herdr"
 	"net"
 	"path/filepath"
 	"strings"

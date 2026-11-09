@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Orange-County-AI/herdr-mcp/internal/herdr"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/mrvnklm/herdr-mcp/internal/herdr"
 )
 
 const instructions = `This server exposes the active Herdr terminal session's socket API.

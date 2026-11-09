@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Orange-County-AI/herdr-mcp/internal/httptransport"
+	"github.com/mrvnklm/herdr-mcp/internal/httptransport"
 )
 
 const UnitName = "herdr-mcp.service"

@@ -35,14 +35,11 @@ restored `--allow-methods`.
 | `--session-actions` | Adds `session_clear`, `session_compact` and `session_restart`. They take only a pane id, send fixed strings, refuse unless Claude is idle or done, and allow one action per 20 seconds across all panes. `session_restart` types `claude --resume` only once the shell is verifiably in the foreground. |
 | `--access-allowed-emails` | Checks the `email` claim of the Cloudflare Access JWT, fail-closed. |
 
-Build from a clone, because the module path is still upstream's and `go install` would fetch
-upstream. The same goes for the `herdr plugin install`, `go install` and `npx skills add`
-commands further down: they are upstream's and install upstream, without these flags. Use a Go
-toolchain without known standard-library vulnerabilities and check with `govulncheck`:
+Install it with `go install`, or as a [Herdr plugin](#herdr-plugin). Use a Go toolchain without
+known standard-library vulnerabilities and check with `govulncheck`:
 
 ```bash
-git clone https://github.com/mrvnklm/herdr-mcp && cd herdr-mcp
-go build -trimpath -o ~/.local/bin/herdr-mcp ./cmd/herdr-mcp
+go install -trimpath github.com/mrvnklm/herdr-mcp/cmd/herdr-mcp@latest
 ```
 
 A voice setup behind [Cloudflare Access](#remote-mcp-through-cloudflare-tunnel), read-only:
@@ -162,7 +159,7 @@ Set `--schema-refresh 0` to disable it and go back to restart-only updates.
 second copy in `GOBIN`:
 
 ```sh
-herdr plugin install Orange-County-AI/herdr-mcp --yes
+herdr plugin install mrvnklm/herdr-mcp --yes
 herdr plugin action invoke ocai.herdr-mcp.doctor
 ```
 
@@ -190,7 +187,7 @@ Use this only when you are not installing the Herdr plugin, or when you need a
 standalone stdio binary:
 
 ```sh
-go install github.com/Orange-County-AI/herdr-mcp/cmd/herdr-mcp@latest
+go install github.com/mrvnklm/herdr-mcp/cmd/herdr-mcp@latest
 herdr-mcp doctor
 ```
 
@@ -202,7 +199,7 @@ otherwise targets the default session at the platform's Herdr config directory.
 Install the repository's root skill globally for supported coding agents:
 
 ```sh
-npx skills add Orange-County-AI/herdr-mcp --skill herdr-mcp -g
+npx skills add mrvnklm/herdr-mcp --skill herdr-mcp -g
 ```
 
 Omit `-g` to install it only in the current project. The skill teaches agents

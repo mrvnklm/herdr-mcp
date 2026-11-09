@@ -13,7 +13,7 @@ Prefer Herdr's plugin manager. It owns an isolated checkout and build, avoiding
 collisions with a different `herdr-mcp` already installed through `GOBIN`:
 
 ```bash
-herdr plugin install Orange-County-AI/herdr-mcp --yes
+herdr plugin install mrvnklm/herdr-mcp --yes
 herdr plugin action invoke ocai.herdr-mcp.doctor
 ```
 
@@ -30,7 +30,7 @@ Use standalone Go installation only when the plugin is unsuitable or a local
 stdio client needs a directly addressable executable:
 
 ```bash
-go install github.com/Orange-County-AI/herdr-mcp/cmd/herdr-mcp@latest
+go install github.com/mrvnklm/herdr-mcp/cmd/herdr-mcp@latest
 herdr-mcp doctor
 ```
 

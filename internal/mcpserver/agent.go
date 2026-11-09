@@ -9,7 +9,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/Orange-County-AI/herdr-mcp/internal/herdr"
+	"github.com/mrvnklm/herdr-mcp/internal/herdr"
 )
 
 const defaultAgentStartupTimeout = 30 * time.Second

@@ -18,11 +18,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Orange-County-AI/herdr-mcp/internal/herdr"
-	"github.com/Orange-County-AI/herdr-mcp/internal/httptransport"
-	"github.com/Orange-County-AI/herdr-mcp/internal/mcpserver"
-	"github.com/Orange-County-AI/herdr-mcp/internal/service"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/mrvnklm/herdr-mcp/internal/herdr"
+	"github.com/mrvnklm/herdr-mcp/internal/httptransport"
+	"github.com/mrvnklm/herdr-mcp/internal/mcpserver"
+	"github.com/mrvnklm/herdr-mcp/internal/service"
 )
 
 const version = "0.5.0"

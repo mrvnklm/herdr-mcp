@@ -1,4 +1,4 @@
-module github.com/Orange-County-AI/herdr-mcp
+module github.com/mrvnklm/herdr-mcp
 
 go 1.25.0
 
