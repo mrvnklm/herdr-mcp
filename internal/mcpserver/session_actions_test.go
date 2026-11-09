@@ -146,15 +146,15 @@ func TestSessionActionsRejectEverythingButAnIdleClaude(t *testing.T) {
 	cases := []struct {
 		name, agent, before, want string
 	}{
-		{"working", sessionAgentJSON("working"), claudeInFront, "arbeitet gerade"},
-		{"blocked", sessionAgentJSON("blocked"), claudeInFront, "wartet gerade"},
-		{"unknown", sessionAgentJSON("unknown"), claudeInFront, "unbekannt"},
-		{"unknown pane", "", claudeInFront, "gibt es nicht"},
-		{"other agent", `{"agent":{"pane_id":"w1:p2","agent":"codex","agent_status":"idle"}}`, claudeInFront, "kein Claude"},
-		{"no agent", `{"agent":{"pane_id":"w1:p2","agent":null,"agent_status":"idle"}}`, claudeInFront, "kein Claude"},
-		{"other pane", `{"agent":{"pane_id":"w9:p9","agent":"claude","agent_status":"idle","agent_session":{"agent":"claude","kind":"id","value":"` + sessionTestUUID + `"}}}`, claudeInFront, "nicht die Pane-ID"},
-		{"shell in front", sessionAgentJSON("idle"), shellInFront, "nicht im Vordergrund"},
-		{"null process ids", sessionAgentJSON("idle"), nullProcesses, "nicht im Vordergrund"},
+		{"working", sessionAgentJSON("working"), claudeInFront, "is working"},
+		{"blocked", sessionAgentJSON("blocked"), claudeInFront, "waiting for an answer"},
+		{"unknown", sessionAgentJSON("unknown"), claudeInFront, "is unknown"},
+		{"unknown pane", "", claudeInFront, "does not exist"},
+		{"other agent", `{"agent":{"pane_id":"w1:p2","agent":"codex","agent_status":"idle"}}`, claudeInFront, "does not run Claude"},
+		{"no agent", `{"agent":{"pane_id":"w1:p2","agent":null,"agent_status":"idle"}}`, claudeInFront, "does not run Claude"},
+		{"other pane", `{"agent":{"pane_id":"w9:p9","agent":"claude","agent_status":"idle","agent_session":{"agent":"claude","kind":"id","value":"` + sessionTestUUID + `"}}}`, claudeInFront, "not this agent's pane id"},
+		{"shell in front", sessionAgentJSON("idle"), shellInFront, "not in the foreground"},
+		{"null process ids", sessionAgentJSON("idle"), nullProcesses, "not in the foreground"},
 	}
 	for _, test := range cases {
 		for _, action := range sessionActions {
@@ -192,7 +192,7 @@ func TestSessionRestartRejectsInvalidSessionIDs(t *testing.T) {
 			fake := &fakeHerdrSocket{agent: fmt.Sprintf(template, agentSession), before: claudeInFront}
 			_, client := newSessionServer(t, fake)
 			result := callSessionTool(t, client, sessionRestartTool, sessionArgs())
-			if !result.IsError || !strings.Contains(resultText(result), "keine gültige") {
+			if !result.IsError || !strings.Contains(resultText(result), "no valid Claude session") {
 				t.Fatalf("result = %s", resultText(result))
 			}
 			if writes := fake.inputs(); len(writes) != 0 {
@@ -285,7 +285,7 @@ func TestSessionRestartTypesNothingWithoutShellSignal(t *testing.T) {
 			fake := &fakeHerdrSocket{agent: sessionAgentJSON("idle"), before: claudeInFront, after: after}
 			_, session := newSessionServer(t, fake)
 			result := callSessionTool(t, session, sessionRestartTool, sessionArgs())
-			if !result.IsError || !strings.Contains(resultText(result), "nicht neu gestartet") {
+			if !result.IsError || !strings.Contains(resultText(result), "not restarted") {
 				t.Fatalf("result = %s", resultText(result))
 			}
 			for _, write := range fake.inputs() {
@@ -313,7 +313,7 @@ func TestSessionRestartSurvivesCallerCancellation(t *testing.T) {
 func TestSessionActionsCooldownSpansPanes(t *testing.T) {
 	fake := &fakeHerdrSocket{agent: sessionAgentJSON("working"), before: claudeInFront}
 	_, session := newSessionServer(t, fake)
-	if result := callSessionTool(t, session, "session_clear", sessionArgs()); !strings.Contains(resultText(result), "arbeitet") {
+	if result := callSessionTool(t, session, "session_clear", sessionArgs()); !strings.Contains(resultText(result), "is working") {
 		t.Fatalf("result = %s", resultText(result))
 	}
 
@@ -326,7 +326,7 @@ func TestSessionActionsCooldownSpansPanes(t *testing.T) {
 	}
 	before := len(fake.recorded())
 	result := callSessionTool(t, session, "session_compact", map[string]any{"target": "w7:p1"})
-	if !result.IsError || !strings.Contains(resultText(result), "Gerade lief") {
+	if !result.IsError || !strings.Contains(resultText(result), "Another session action") {
 		t.Fatalf("result = %s", resultText(result))
 	}
 	if after := len(fake.recorded()); after != before {
@@ -345,7 +345,7 @@ func TestSessionActionsRunOneAtATime(t *testing.T) {
 		}
 	}
 	second := callSessionTool(t, session, "session_clear", sessionArgs())
-	if !second.IsError || !strings.Contains(resultText(second), "Gerade lief") {
+	if !second.IsError || !strings.Contains(resultText(second), "Another session action") {
 		t.Fatalf("parallel call = %s", resultText(second))
 	}
 	close(fake.hold)

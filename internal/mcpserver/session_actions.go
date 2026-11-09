@@ -38,7 +38,7 @@ var (
 	sessionTargetPattern = regexp.MustCompile(`^w[0-9A-Za-z]+:p[0-9A-Za-z]+$`)
 	sessionUUIDPattern   = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
-	errSessionBusy = errors.New("Gerade lief schon eine Session-Aktion, versuch es gleich nochmal.")
+	errSessionBusy = errors.New("Another session action just ran. Try again in a moment.")
 )
 
 // sessionAction is one fixed tool. command is the only text it can ever send,
@@ -135,25 +135,25 @@ func (s *Server) runSessionAction(ctx context.Context, action sessionAction, arg
 	defer func() { s.lastSessionAction = time.Now() }()
 
 	if err := s.submitSlashCommand(ctx, target, action.command); err != nil {
-		return errorResult(action.tool, fmt.Errorf("%s konnte nicht an %s geschickt werden: %w", action.command, target, err))
+		return errorResult(action.tool, fmt.Errorf("could not send %s to %s: %w", action.command, target, err))
 	}
 	if action.tool != sessionRestartTool {
-		return sessionActionResult(fmt.Sprintf("%s ist an %s geschickt.", action.command, target))
+		return sessionActionResult(fmt.Sprintf("Sent %s to %s.", action.command, target))
 	}
 
 	// Typed while Claude still runs, this line would land as a prompt in the
 	// session, so only a positive shell signal may lead past this point.
 	if !s.waitForShell(ctx, target) {
-		return errorResult(action.tool, fmt.Errorf("/exit ist an %s geschickt, aber die Shell kam nicht rechtzeitig zurück. Claude wurde nicht neu gestartet und ich habe nichts weiter getippt, schau bitte selbst nach.", target))
+		return errorResult(action.tool, fmt.Errorf("Sent /exit to %s, but the shell did not come back in time. Claude was not restarted and nothing else was typed. Please check the pane.", target))
 	}
 	if _, err := s.Client.Call(ctx, "pane.send_input", sessionParams(map[string]any{
 		"pane_id": target,
 		"text":    "claude --resume " + sessionID,
 		"keys":    []string{"enter"},
 	})); err != nil {
-		return errorResult(action.tool, fmt.Errorf("Claude in %s ist beendet, aber der Neustart ging nicht raus: %w", target, err))
+		return errorResult(action.tool, fmt.Errorf("Claude in %s has exited, but the restart could not be sent: %w", target, err))
 	}
-	return sessionActionResult(fmt.Sprintf("Claude in %s wurde beendet und startet mit derselben Session neu.", target))
+	return sessionActionResult(fmt.Sprintf("Claude in %s exited and is restarting with the same session.", target))
 }
 
 // sessionTarget accepts exactly one argument, a pane id. Agent names are out:
@@ -165,7 +165,7 @@ func sessionTarget(arguments json.RawMessage) (string, error) {
 	decoder := json.NewDecoder(bytes.NewReader(arguments))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&decoded); err != nil || !sessionTargetPattern.MatchString(decoded.Target) {
-		return "", errors.New("Ich brauche genau eine Pane-ID wie w1:p2 als target, sonst nichts.")
+		return "", errors.New("target must be exactly one pane id such as w1:p2.")
 	}
 	return decoded.Target, nil
 }
@@ -177,9 +177,9 @@ func (s *Server) checkSessionTarget(ctx context.Context, action sessionAction, t
 	if err != nil {
 		var apiErr *herdr.APIError
 		if errors.As(err, &apiErr) && (apiErr.Code == "agent_not_found" || apiErr.Code == "pane_not_found") {
-			return "", fmt.Errorf("Pane %s gibt es nicht oder dort läuft kein Agent.", target)
+			return "", fmt.Errorf("Pane %s does not exist or runs no agent.", target)
 		}
-		return "", fmt.Errorf("Herdr hat den Zustand von %s nicht geliefert: %w", target, err)
+		return "", fmt.Errorf("Herdr did not report the state of %s: %w", target, err)
 	}
 	var response struct {
 		Agent struct {
@@ -194,30 +194,30 @@ func (s *Server) checkSessionTarget(ctx context.Context, action sessionAction, t
 		} `json:"agent"`
 	}
 	if err := json.Unmarshal(result, &response); err != nil {
-		return "", fmt.Errorf("Herdr hat für %s eine unlesbare Antwort geliefert.", target)
+		return "", fmt.Errorf("Herdr returned an unreadable response for %s.", target)
 	}
 	agent := response.Agent
 	switch agent.Status {
 	case "idle", "done":
 	case "working":
-		return "", fmt.Errorf("Claude in %s arbeitet gerade, ich fasse die Session nicht an.", target)
+		return "", fmt.Errorf("Claude in %s is working, so the session was left alone.", target)
 	case "blocked":
-		return "", fmt.Errorf("Claude in %s wartet gerade auf eine Antwort, ich fasse die Session nicht an.", target)
+		return "", fmt.Errorf("Claude in %s is waiting for an answer, so the session was left alone.", target)
 	default:
-		return "", fmt.Errorf("Der Zustand von %s ist unbekannt, ich fasse die Session nicht an.", target)
+		return "", fmt.Errorf("The state of %s is unknown, so the session was left alone.", target)
 	}
 	if agent.Agent == nil || *agent.Agent != "claude" {
-		return "", fmt.Errorf("In %s läuft kein Claude, ich fasse die Session nicht an.", target)
+		return "", fmt.Errorf("%s does not run Claude, so the session was left alone.", target)
 	}
 	if agent.PaneID != target {
-		return "", fmt.Errorf("%s ist nicht die Pane-ID dieses Agents.", target)
+		return "", fmt.Errorf("%s is not this agent's pane id.", target)
 	}
 
 	var sessionID string
 	if action.tool == sessionRestartTool {
 		session := agent.Session
 		if session == nil || session.Agent != "claude" || session.Kind != "id" || !sessionUUIDPattern.MatchString(session.Value) {
-			return "", fmt.Errorf("Für %s gibt es keine gültige Claude-Session-ID, ich starte nichts neu.", target)
+			return "", fmt.Errorf("%s has no valid Claude session id, so nothing was restarted.", target)
 		}
 		sessionID = session.Value
 	}
@@ -226,10 +226,10 @@ func (s *Server) checkSessionTarget(ctx context.Context, action sessionAction, t
 	// would then succeed at once, without /exit having done anything.
 	info, err := s.paneProcesses(ctx, target)
 	if err != nil {
-		return "", fmt.Errorf("Herdr hat die Prozesse von %s nicht geliefert: %w", target, err)
+		return "", fmt.Errorf("Herdr did not report the processes of %s: %w", target, err)
 	}
 	if !info.foregroundIsNotShell() {
-		return "", fmt.Errorf("In %s läuft Claude nicht im Vordergrund, ich sende nichts.", target)
+		return "", fmt.Errorf("Claude is not in the foreground in %s, so nothing was sent.", target)
 	}
 	return sessionID, nil
 }

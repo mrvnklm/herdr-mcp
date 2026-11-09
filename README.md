@@ -1,5 +1,8 @@
 # herdr-mcp
 
+> **This is a fork of [Orange-County-AI/herdr-mcp](https://github.com/Orange-County-AI/herdr-mcp)**
+> (Apache-2.0), modified as described under [What this fork adds](#what-this-fork-adds).
+
 `herdr-mcp` exposes the active [Herdr](https://github.com/herdrdev/herdr) session's local socket API as Model Context Protocol tools.
 
 At startup it:
@@ -15,6 +18,50 @@ It re-reads that schema on an interval and swaps the tools when it changed, and
 most tools take an optional `machine` argument that runs them on one of Herdr's
 local sessions or saved SSH machines. See [Saved SSH machines](#saved-ssh-machines) and
 [Keeping up with Herdr](#keeping-up-with-herdr).
+
+## What this fork adds
+
+Built for using Herdr from the voice mode of the Claude apps through a remote connector, where
+every tool call costs latency and tokens and a call is dropped after about 40 seconds. Every
+change sits behind a flag. Without the flags the server behaves like upstream, apart from the
+restored `--allow-methods`.
+
+| Flag | Effect |
+| --- | --- |
+| `--allow-methods` | Restored. Upstream removed it in `c6dff41`, and `HERDR_MCP_ALLOW_METHODS` was then silently ignored, exposing every method. Use dotted names (`agent.list`) and never `agent.*`, which also grants `send_keys`, `start` and `focus`. |
+| `--compact-results` | Drops `structuredContent` for tools without an `outputSchema`, and returns `agent_list` as a per-status count plus seven fields per agent. Measured with 30 agents: 44.7 KB down to 4.7 KB. |
+| `--read-default-lines`, `--read-max-lines` | Default and cap for `lines` on `agent_read` and `pane_read`. |
+| `--max-wait-ms` | Caps `agent_wait`, and sends `agent_prompt` without waiting. |
+| `--session-actions` | Adds `session_clear`, `session_compact` and `session_restart`. They take only a pane id, send fixed strings, refuse unless Claude is idle or done, and allow one action per 20 seconds across all panes. `session_restart` types `claude --resume` only once the shell is verifiably in the foreground. |
+| `--access-allowed-emails` | Checks the `email` claim of the Cloudflare Access JWT, fail-closed. |
+
+Build from a clone, because the module path is still upstream's and `go install` would fetch
+upstream. Use a Go toolchain without known standard-library vulnerabilities and check with
+`govulncheck`:
+
+```bash
+git clone https://github.com/mrvnklm/herdr-mcp && cd herdr-mcp
+go build -trimpath -o ~/.local/bin/herdr-mcp ./cmd/herdr-mcp
+```
+
+A voice setup behind [Cloudflare Access](#remote-mcp-through-cloudflare-tunnel), read-only:
+
+```bash
+herdr-mcp serve --listen 127.0.0.1:8091 --require-auth \
+  --access-team-domain https://<team>.cloudflareaccess.com --access-aud <aud> \
+  --access-allowed-emails you@example.com --allowed-hosts <host> \
+  --allow-methods agent.list,agent.get,agent.read,agent.wait \
+  --machines=false --compact-results --read-default-lines 40 --read-max-lines 150 \
+  --max-wait-ms 18000
+```
+
+In Access, enable Managed OAuth with dynamic client registration and allow the redirect URIs
+`https://claude.ai/api/mcp/auth_callback` and `https://claude.com/api/mcp/auth_callback`.
+
+**Run one instance per person, and treat `agent.prompt` as shell access.** Pane output reaches
+the model unfiltered, so text in a pane can steer it. If your agents run with permissions
+bypassed, a prompt it sends executes without any further check. `--session-actions` does not
+limit `agent.prompt`; leave that method out unless you accept this.
 
 ## Saved SSH machines
 
