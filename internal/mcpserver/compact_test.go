@@ -232,7 +232,7 @@ func TestCompactDescriptionsPointFromAgentListToAgentGet(t *testing.T) {
 	}
 	for name, wants := range map[string][]string{
 		"agent_list": {"compact summary", "agent_get"},
-		"agent_get":  {"every field", "agent_list returns only a compact summary"},
+		"agent_get":  {"every field", "agent_list returns only a compact summary", "still REMAINING"},
 	} {
 		for _, want := range wants {
 			if !strings.Contains(descriptions[name], want) {

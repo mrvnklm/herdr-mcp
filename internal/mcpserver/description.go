@@ -49,7 +49,7 @@ func (s *Server) describe(method string, input map[string]any) string {
 var compactToolDescriptions = map[string]string{
 	"agent.list": "List running coding agents as a compact summary: a count per status, then per agent pane_id, name, status (idle, working, blocked, done, unknown), repo (basename of cwd), title, context usage, and focused (only when true). " +
 		"Call agent_get with a pane_id or name for every other field. Use agent_read for output or agent_prompt to send work.",
-	"agent.get": "Inspect one running agent by unique name or pane_id with every field Herdr reports (cwd, workspace and tab IDs, tokens, launch_pending, interactive_ready). agent_list returns only a compact summary; use this for details.",
+	"agent.get": "Inspect one running agent by unique name or pane_id with every field Herdr reports (cwd, workspace and tab IDs, tokens, launch_pending, interactive_ready). agent_list returns only a compact summary; use this for details. tokens.limit, when a sidebar plugin sets it, is the share of the provider's rate-limit window still REMAINING: \"5h 100%\" means nothing is used, and a low number is the warning sign.",
 }
 
 func inputSummary(input map[string]any) string {
