@@ -371,6 +371,21 @@ func TestOriginRejectsEmptyQueryMarker(t *testing.T) {
 	}
 }
 
+func TestEmptyAccessAllowedEmailsEnvIsAStartupError(t *testing.T) {
+	_, err := New(Config{
+		Listen:         "127.0.0.1:8091",
+		AccessTeam:     "team.cloudflareaccess.com",
+		AccessAudience: "aud",
+		AllowedHosts:   []string{"herdr.example.com"},
+		LookupEnv: func(name string) (string, bool) {
+			return "", name == "CF_ACCESS_ALLOWED_EMAILS"
+		},
+	})
+	if err == nil {
+		t.Fatal("an empty CF_ACCESS_ALLOWED_EMAILS must not switch the check off")
+	}
+}
+
 func TestAccessAllowedEmailsFailsClosedAtStartup(t *testing.T) {
 	noEnv := func(string) (string, bool) { return "", false }
 	withAccess := Config{

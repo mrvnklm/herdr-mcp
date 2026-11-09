@@ -3,6 +3,8 @@ name: herdr-mcp
 description: "Install, configure, run, expose, and troubleshoot herdr-mcp, the MCP bridge for Herdr's socket API. Use when connecting Herdr to Claude, ChatGPT, or another MCP client; installing the systemd service; configuring native private HTTPS and bearer auth, Cloudflare Tunnel, Access Managed OAuth, or Access JWT validation; restricting exposed Herdr methods; or diagnosing herdr-mcp health, schema, socket, and protocol errors."
 ---
 
+<!-- Modified from Orange-County-AI/herdr-mcp in this fork. See "What this fork adds" in README.md. -->
+
 # Herdr MCP
 
 `herdr-mcp` turns the active Herdr session's local socket methods into MCP tools. It supports stdio for local clients and Streamable HTTP for remote clients.
@@ -153,7 +155,7 @@ The service reads the optional file `~/.config/herdr-mcp/env`. Do not overwrite 
 
 ```dotenv
 HERDR_SOCKET_PATH=/home/you/.config/herdr/herdr.sock
-HERDR_MCP_ALLOW_METHODS=ping,session.snapshot,agent.*,pane.read,pane.wait_for_output
+HERDR_MCP_ALLOW_METHODS=ping,session.snapshot,agent.list,agent.get,agent.read,agent.wait,pane.read,pane.wait_for_output
 HERDR_MCP_DENY_METHODS=events.subscribe,pane.report_agent,pane.report_agent_session,pane.report_metadata,workspace.report_metadata,pane.clear_agent_authority,pane.release_agent,pane.graphics.*,server.ssh_agent.register
 CF_ACCESS_TEAM_DOMAIN=https://your-team.cloudflareaccess.com
 CF_ACCESS_AUD=your-access-application-audience

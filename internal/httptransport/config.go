@@ -92,7 +92,8 @@ func New(c Config) (*Transport, error) {
 			return nil, err
 		}
 	}
-	if c.Explicit["access-allowed-emails"] || c.AccessAllowedEmails != "" {
+	_, emailsInEnv := c.LookupEnv("CF_ACCESS_ALLOWED_EMAILS")
+	if c.Explicit["access-allowed-emails"] || emailsInEnv || c.AccessAllowedEmails != "" {
 		if t.access == nil {
 			return nil, fmt.Errorf("--access-allowed-emails requires Cloudflare Access configuration")
 		}

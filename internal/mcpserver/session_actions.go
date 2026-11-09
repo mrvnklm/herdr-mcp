@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"time"
 
@@ -38,7 +39,7 @@ var (
 	sessionTargetPattern = regexp.MustCompile(`^w[0-9A-Za-z]+:p[0-9A-Za-z]+$`)
 	sessionUUIDPattern   = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
-	errSessionBusy = errors.New("Another session action just ran. Try again in a moment.")
+	errSessionBusy = errors.New("Another session action is running. Try again in a few seconds.")
 )
 
 // sessionAction is one fixed tool. command is the only text it can ever send,
@@ -118,7 +119,8 @@ func (s *Server) runSessionAction(ctx context.Context, action sessionAction, arg
 	}
 	defer s.sessionMu.Unlock()
 	if !s.lastSessionAction.IsZero() && time.Since(s.lastSessionAction) < s.sessionCooldown {
-		return errorResult(action.tool, errSessionBusy)
+		remaining := s.sessionCooldown - time.Since(s.lastSessionAction)
+		return errorResult(action.tool, fmt.Errorf("Another session action just ran. Try again in %d seconds.", int(math.Ceil(remaining.Seconds()))))
 	}
 
 	// A client that hangs up after /exit must not cancel the resume, or the
@@ -197,6 +199,9 @@ func (s *Server) checkSessionTarget(ctx context.Context, action sessionAction, t
 		return "", fmt.Errorf("Herdr returned an unreadable response for %s.", target)
 	}
 	agent := response.Agent
+	if agent.Agent == nil || *agent.Agent != "claude" {
+		return "", fmt.Errorf("%s does not run Claude, so the session was left alone.", target)
+	}
 	switch agent.Status {
 	case "idle", "done":
 	case "working":
@@ -206,11 +211,8 @@ func (s *Server) checkSessionTarget(ctx context.Context, action sessionAction, t
 	default:
 		return "", fmt.Errorf("The state of %s is unknown, so the session was left alone.", target)
 	}
-	if agent.Agent == nil || *agent.Agent != "claude" {
-		return "", fmt.Errorf("%s does not run Claude, so the session was left alone.", target)
-	}
 	if agent.PaneID != target {
-		return "", fmt.Errorf("%s is not this agent's pane id.", target)
+		return "", fmt.Errorf("%s is not a current pane id; the agent is in %s. Use agent_list for current ids.", target, agent.PaneID)
 	}
 
 	var sessionID string
@@ -227,6 +229,9 @@ func (s *Server) checkSessionTarget(ctx context.Context, action sessionAction, t
 	info, err := s.paneProcesses(ctx, target)
 	if err != nil {
 		return "", fmt.Errorf("Herdr did not report the processes of %s: %w", target, err)
+	}
+	if info.ShellPID == nil || info.ForegroundGroup == nil {
+		return "", fmt.Errorf("Herdr did not report the foreground process of %s, so nothing was sent.", target)
 	}
 	if !info.foregroundIsNotShell() {
 		return "", fmt.Errorf("Claude is not in the foreground in %s, so nothing was sent.", target)

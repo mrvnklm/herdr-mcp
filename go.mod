@@ -1,3 +1,5 @@
+// Modified from Orange-County-AI/herdr-mcp in this fork. See "What this fork adds" in README.md.
+
 module github.com/mrvnklm/herdr-mcp
 
 go 1.25.0

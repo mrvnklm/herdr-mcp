@@ -76,7 +76,7 @@ func (s *Server) limitWait(method string, params json.RawMessage) (json.RawMessa
 		if err != nil {
 			return params, ""
 		}
-		return encoded, "Sent without waiting: this bridge does not hold a call open for a whole turn. Use agent_wait, then agent_read for the answer."
+		return encoded, "Sent without waiting: this bridge does not hold a call open for a whole turn. The agent may not have started yet: call agent_wait with until [\"working\", \"blocked\"] first, then agent_wait again, then agent_read for the answer."
 	}
 	requested, isNumber := decoded["timeout_ms"].(float64)
 	if isNumber && requested > 0 && requested <= float64(s.maxWaitMS) && requested == math.Trunc(requested) {
@@ -92,6 +92,32 @@ func (s *Server) limitWait(method string, params json.RawMessage) (json.RawMessa
 		note = fmt.Sprintf("Capped timeout_ms at %d (requested %v): this bridge waits at most %d ms per call. Call agent_wait again to keep waiting.", s.maxWaitMS, requested, s.maxWaitMS)
 	}
 	return encoded, note
+}
+
+// withPromptWaitIgnored says in the tool schema what limitWait does at call
+// time, so a caller does not plan around a wait that is dropped.
+func withPromptWaitIgnored(input map[string]any) map[string]any {
+	properties, _ := input["properties"].(map[string]any)
+	wait, ok := properties["wait"].(map[string]any)
+	if !ok {
+		return input
+	}
+	described := make(map[string]any, len(wait)+1)
+	for key, value := range wait {
+		described[key] = value
+	}
+	described["description"] = "Ignored by this bridge: the prompt is sent without waiting. Follow up with agent_wait."
+	mergedProperties := make(map[string]any, len(properties))
+	for name, schema := range properties {
+		mergedProperties[name] = schema
+	}
+	mergedProperties["wait"] = described
+	merged := make(map[string]any, len(input))
+	for key, value := range input {
+		merged[key] = value
+	}
+	merged["properties"] = mergedProperties
+	return merged
 }
 
 func (s *Server) enrichAgentError(ctx context.Context, caller herdr.Transport, method string, arguments json.RawMessage, err error) error {

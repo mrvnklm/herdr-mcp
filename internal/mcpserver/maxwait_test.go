@@ -3,8 +3,11 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // waitTransport records agent.wait params and reports no launching agents.
@@ -81,7 +84,7 @@ func TestMaxWaitOffLeavesParamsAlone(t *testing.T) {
 	}
 }
 
-func TestMaxWaitAppliesOnlyToAgentWait(t *testing.T) {
+func TestMaxWaitIgnoresOtherMethods(t *testing.T) {
 	server := newAgentToolsServer(t, Options{Client: &waitTransport{}, MaxWaitMS: 100})
 	params := `{"timeout_ms":900000}`
 	if got, note := server.limitWait("pane.wait_for_output", json.RawMessage(params)); string(got) != params || note != "" {
@@ -123,5 +126,49 @@ func TestMaxWaitDropsPromptWait(t *testing.T) {
 	waiting := `{"target":"w1:p1","text":"hi","wait":{"timeout_ms":1}}`
 	if got, note := off.limitWait("agent.prompt", json.RawMessage(waiting)); string(got) != waiting || note != "" {
 		t.Fatalf("flag off: limitWait = %s, %q", got, note)
+	}
+}
+
+// promptTransport answers agent.prompt with a fixed error, or nil for success.
+type promptTransport struct{ err error }
+
+func (p *promptTransport) Call(_ context.Context, method string, _ json.RawMessage) (json.RawMessage, error) {
+	if method == "agent.prompt" && p.err != nil {
+		return nil, p.err
+	}
+	return json.RawMessage(`{"type":"agent_list","agents":[]}`), nil
+}
+
+func TestPromptWaitNoteOnlyAfterTheSend(t *testing.T) {
+	const arguments = `{"target":"w1:p1","text":"hi","wait":{"timeout_ms":600000}}`
+	input := map[string]any{"properties": map[string]any{"target": map[string]any{}, "text": map[string]any{}, "wait": map[string]any{}}}
+	text := func(transportErr error) (bool, string) {
+		server := newAgentToolsServer(t, Options{Client: &promptTransport{err: transportErr}, MaxWaitMS: 100})
+		result := server.call(context.Background(), "agent.prompt", input, json.RawMessage(arguments))
+		var all strings.Builder
+		for _, content := range result.Content {
+			if item, ok := content.(*mcp.TextContent); ok {
+				all.WriteString(item.Text)
+			}
+		}
+		return result.IsError, all.String()
+	}
+	if failed, got := text(errors.New("agent_blocked")); !failed || strings.Contains(got, "Sent without waiting") {
+		t.Fatalf("failed prompt: isError=%v, %q", failed, got)
+	}
+	if failed, got := text(nil); failed || !strings.Contains(got, "Sent without waiting") || !strings.Contains(got, "until") {
+		t.Fatalf("sent prompt: isError=%v, %q", failed, got)
+	}
+}
+
+func TestPromptSchemaSaysWaitIsIgnored(t *testing.T) {
+	input := map[string]any{"properties": map[string]any{"wait": map[string]any{"type": "object"}}}
+	got := withPromptWaitIgnored(input)
+	wait := got["properties"].(map[string]any)["wait"].(map[string]any)
+	if !strings.Contains(wait["description"].(string), "Ignored") || wait["type"] != "object" {
+		t.Fatalf("wait = %v", wait)
+	}
+	if _, touched := input["properties"].(map[string]any)["wait"].(map[string]any)["description"]; touched {
+		t.Fatal("input schema was modified")
 	}
 }

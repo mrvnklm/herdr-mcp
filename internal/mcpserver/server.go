@@ -70,7 +70,8 @@ type Server struct {
 	readDefaultLines int
 	readMaxLines     int
 
-	// maxWaitMS bounds timeout_ms on agent.wait; zero leaves it as sent.
+	// maxWaitMS bounds timeout_ms on agent.wait and drops the wait of
+	// agent.prompt; zero leaves both as sent.
 	maxWaitMS int
 
 	// sessionMu and lastSessionAction allow one session_* action at a time and
@@ -107,8 +108,8 @@ type Options struct {
 	// ReadMaxLines set, an omitted lines becomes ReadMaxLines.
 	ReadDefaultLines int
 	ReadMaxLines     int
-	// MaxWaitMS fills in and caps timeout_ms on agent_wait, so a wait cannot
-	// outlast a client that gives up. Zero disables it.
+	// MaxWaitMS fills in and caps timeout_ms on agent_wait and drops wait from
+	// agent_prompt, so neither can outlast a client that gives up. Zero disables it.
 	MaxWaitMS int
 	// SessionActions adds session_clear, session_compact and session_restart.
 	// They send only fixed strings and are independent of Allow and Deny.
@@ -178,6 +179,9 @@ func (s *Server) register(schema *herdr.Schema) error {
 		}
 		if defaultLines, maxLines := s.readLineLimits(definition.Method); defaultLines > 0 || maxLines > 0 {
 			definition.InputSchema = withReadLineLimits(definition.InputSchema, defaultLines, maxLines)
+		}
+		if definition.Method == "agent.prompt" && s.maxWaitMS > 0 {
+			definition.InputSchema = withPromptWaitIgnored(definition.InputSchema)
 		}
 		fresh[definition.ToolName] = struct{}{}
 		tool := &mcp.Tool{
@@ -311,7 +315,7 @@ func (s *Server) dispatch(ctx context.Context, method string, input map[string]a
 		notes = append(notes, linesNote)
 	}
 	normalized, waitNote := s.limitWait(method, normalized)
-	if waitNote != "" {
+	if waitNote != "" && method != "agent.prompt" {
 		notes = append(notes, waitNote)
 	}
 	caller, err := s.callerFor(ctx, method, selector)
@@ -329,6 +333,10 @@ func (s *Server) dispatch(ctx context.Context, method string, input map[string]a
 			err = s.enrichAgentError(ctx, caller, method, normalized, err)
 		}
 		return errorResult(method, err, notes...)
+	}
+	// Only a prompt that went out was sent without waiting.
+	if waitNote != "" && method == "agent.prompt" {
+		notes = append(notes, waitNote)
 	}
 	if method == "agent.start" {
 		var readinessNote string

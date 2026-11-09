@@ -183,6 +183,7 @@ var httpEnvironmentKeys = []string{
 	"HERDR_MCP_LISTEN", "HERDR_MCP_ALLOW_PRIVATE", "HERDR_MCP_BEARER_TOKEN_FILE",
 	"HERDR_MCP_BEARER_TOKEN", "HERDR_MCP_TLS_CERT_FILE", "HERDR_MCP_TLS_KEY_FILE",
 	"HERDR_MCP_ALLOWED_HOSTS", "CF_ACCESS_TEAM_DOMAIN", "CF_ACCESS_AUD",
+	"CF_ACCESS_ALLOWED_EMAILS",
 }
 
 func serviceEnvironment(path string) (map[string]string, error) {

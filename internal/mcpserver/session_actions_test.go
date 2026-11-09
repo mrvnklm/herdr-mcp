@@ -152,9 +152,10 @@ func TestSessionActionsRejectEverythingButAnIdleClaude(t *testing.T) {
 		{"unknown pane", "", claudeInFront, "does not exist"},
 		{"other agent", `{"agent":{"pane_id":"w1:p2","agent":"codex","agent_status":"idle"}}`, claudeInFront, "does not run Claude"},
 		{"no agent", `{"agent":{"pane_id":"w1:p2","agent":null,"agent_status":"idle"}}`, claudeInFront, "does not run Claude"},
-		{"other pane", `{"agent":{"pane_id":"w9:p9","agent":"claude","agent_status":"idle","agent_session":{"agent":"claude","kind":"id","value":"` + sessionTestUUID + `"}}}`, claudeInFront, "not this agent's pane id"},
+		{"other pane", `{"agent":{"pane_id":"w9:p9","agent":"claude","agent_status":"idle","agent_session":{"agent":"claude","kind":"id","value":"` + sessionTestUUID + `"}}}`, claudeInFront, "not a current pane id"},
+		{"working other agent", `{"agent":{"pane_id":"w1:p2","agent":"codex","agent_status":"working"}}`, claudeInFront, "does not run Claude"},
 		{"shell in front", sessionAgentJSON("idle"), shellInFront, "not in the foreground"},
-		{"null process ids", sessionAgentJSON("idle"), nullProcesses, "not in the foreground"},
+		{"null process ids", sessionAgentJSON("idle"), nullProcesses, "did not report the foreground"},
 	}
 	for _, test := range cases {
 		for _, action := range sessionActions {

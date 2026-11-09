@@ -24,16 +24,17 @@ local sessions or saved SSH machines. See [Saved SSH machines](#saved-ssh-machin
 Built for using Herdr from the voice mode of the Claude apps through a remote connector, where
 every tool call costs latency and tokens and a call is dropped after about 40 seconds. Every
 change sits behind a flag. Without the flags the server behaves like upstream, apart from the
-restored `--allow-methods`.
+restored `--allow-methods` and a stricter parse of the Access JWT: a token whose `email` claim is
+not a string is rejected.
 
 | Flag | Effect |
 | --- | --- |
 | `--allow-methods` | Restored. Upstream removed it in `c6dff41`, and `HERDR_MCP_ALLOW_METHODS` was then silently ignored, exposing every method. Use dotted names (`agent.list`) and never `agent.*`, which also grants `send_keys`, `start` and `focus`. |
 | `--compact-results` | Drops `structuredContent` for tools without an `outputSchema`, and returns `agent_list` as a per-status count plus seven fields per agent. Measured with 30 agents: 44.7 KB down to 4.7 KB. |
 | `--read-default-lines`, `--read-max-lines` | Default and cap for `lines` on `agent_read` and `pane_read`. |
-| `--max-wait-ms` | Caps `agent_wait`, and sends `agent_prompt` without waiting. |
-| `--session-actions` | Adds `session_clear`, `session_compact` and `session_restart`. They take only a pane id, send fixed strings, refuse unless Claude is idle or done, and allow one action per 20 seconds across all panes. `session_restart` types `claude --resume` only once the shell is verifiably in the foreground. |
-| `--access-allowed-emails` | Checks the `email` claim of the Cloudflare Access JWT, fail-closed. |
+| `--max-wait-ms` | Fills in and caps `timeout_ms` on `agent_wait` (waiting through a launch can take twice this), and removes `wait` from `agent_prompt`, which then returns once the prompt is submitted. After a prompt, call `agent_wait` with `until: ["working", "blocked"]` first, because an idle agent matches at once otherwise. |
+| `--session-actions` | Adds `session_clear`, `session_compact` and `session_restart`. They take only a pane id, send fixed strings, refuse unless Claude is idle or done, and allow one action per 20 seconds across all panes. `session_restart` types `claude --resume` only once the shell is verifiably in the foreground. They do not depend on `--allow-methods` or `--deny-methods`, and use `pane.send_keys` and `agent.prompt` internally. |
+| `--access-allowed-emails` | Checks the `email` claim of the Cloudflare Access JWT, fail-closed. An empty value, including an empty `CF_ACCESS_ALLOWED_EMAILS`, is a startup error. |
 
 Install it with `go install`, or as a [Herdr plugin](#herdr-plugin). Use a Go toolchain without
 known standard-library vulnerabilities and check with `govulncheck`:
@@ -59,7 +60,10 @@ In Access, enable Managed OAuth with dynamic client registration and allow the r
 **Run one instance per person, and treat `agent.prompt` as shell access.** Pane output reaches
 the model unfiltered, so text in a pane can steer it. If your agents run with permissions
 bypassed, a prompt it sends executes without any further check. `--session-actions` does not
-limit `agent.prompt`; leave that method out unless you accept this.
+limit `agent.prompt`. Denying only `agent.prompt` is not enough, because `agent.send_keys`,
+`agent.start`, `pane.send_input`, `pane.send_text`, `pane.send_keys` and `pane.input_set` reach
+the same shells. Use `--allow-methods` with exact names, and add `agent.prompt` only if you
+accept this.
 
 ## Saved SSH machines
 
@@ -497,14 +501,14 @@ The full surface includes destructive operations such as `server_stop`, `worktre
 
 ```sh
 herdr-mcp serve \
-  --allow-methods 'ping,session.snapshot,agent.*,pane.read,pane.wait_for_output' \
+  --allow-methods 'ping,session.snapshot,agent.list,agent.get,agent.read,agent.wait,pane.read,pane.wait_for_output' \
   --deny-methods 'agent.view.*,agent.rename'
 ```
 
 Equivalent environment variables:
 
 ```dotenv
-HERDR_MCP_ALLOW_METHODS=ping,session.snapshot,agent.*,pane.read,pane.wait_for_output
+HERDR_MCP_ALLOW_METHODS=ping,session.snapshot,agent.list,agent.get,agent.read,agent.wait,pane.read,pane.wait_for_output
 HERDR_MCP_DENY_METHODS=events.subscribe,pane.report_agent,pane.report_agent_session,pane.report_metadata,workspace.report_metadata,pane.clear_agent_authority,pane.release_agent,pane.graphics.*,server.ssh_agent.register
 
 An allow list is evaluated first; the deny list always wins.
