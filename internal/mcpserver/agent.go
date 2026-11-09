@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/Orange-County-AI/herdr-mcp/internal/herdr"
@@ -46,6 +47,34 @@ func (s *Server) waitThroughLaunch(ctx context.Context, caller herdr.Transport, 
 		return fmt.Errorf("agent %q is still launching; %w", target, err)
 	}
 	return nil
+}
+
+// limitWait forces timeout_ms on agent.wait to a positive integer no larger
+// than the configured maximum. Anything else, 0 and null included, would fall
+// through to the socket's 15-minute budget. It runs before waitThroughLaunch,
+// which reads the same argument.
+func (s *Server) limitWait(method string, params json.RawMessage) (json.RawMessage, string) {
+	if method != "agent.wait" || s.maxWaitMS <= 0 {
+		return params, ""
+	}
+	var decoded map[string]any
+	if json.Unmarshal(params, &decoded) != nil || decoded == nil {
+		return params, ""
+	}
+	requested, isNumber := decoded["timeout_ms"].(float64)
+	if isNumber && requested > 0 && requested <= float64(s.maxWaitMS) && requested == math.Trunc(requested) {
+		return params, ""
+	}
+	decoded["timeout_ms"] = s.maxWaitMS
+	encoded, err := json.Marshal(decoded)
+	if err != nil {
+		return params, ""
+	}
+	note := ""
+	if isNumber && requested > float64(s.maxWaitMS) {
+		note = fmt.Sprintf("Capped timeout_ms at %d (requested %v): this bridge waits at most %d ms per call. Call agent_wait again to keep waiting.", s.maxWaitMS, requested, s.maxWaitMS)
+	}
+	return encoded, note
 }
 
 func (s *Server) enrichAgentError(ctx context.Context, caller herdr.Transport, method string, arguments json.RawMessage, err error) error {

@@ -68,6 +68,9 @@ type Server struct {
 	readDefaultLines int
 	readMaxLines     int
 
+	// maxWaitMS bounds timeout_ms on agent.wait; zero leaves it as sent.
+	maxWaitMS int
+
 	// sessionMu and lastSessionAction allow one session_* action at a time and
 	// space them apart, across all panes.
 	sessionMu         sync.Mutex
@@ -102,6 +105,9 @@ type Options struct {
 	// ReadMaxLines set, an omitted lines becomes ReadMaxLines.
 	ReadDefaultLines int
 	ReadMaxLines     int
+	// MaxWaitMS fills in and caps timeout_ms on agent_wait, so a wait cannot
+	// outlast a client that gives up. Zero disables it.
+	MaxWaitMS int
 	// SessionActions adds session_clear, session_compact and session_restart.
 	// They send only fixed strings and are independent of Allow and Deny.
 	SessionActions bool
@@ -127,6 +133,8 @@ func New(options Options) (*Server, error) {
 		compactResults:   options.CompactResults,
 		readDefaultLines: options.ReadDefaultLines,
 		readMaxLines:     options.ReadMaxLines,
+
+		maxWaitMS: options.MaxWaitMS,
 
 		sessionCooldown: defaultSessionCooldown,
 		sessionExitWait: defaultSessionExitWait,
@@ -299,6 +307,10 @@ func (s *Server) dispatch(ctx context.Context, method string, input map[string]a
 	normalized, linesNote := s.limitReadLines(method, normalized)
 	if linesNote != "" {
 		notes = append(notes, linesNote)
+	}
+	normalized, waitNote := s.limitWait(method, normalized)
+	if waitNote != "" {
+		notes = append(notes, waitNote)
 	}
 	caller, err := s.callerFor(ctx, method, selector)
 	if err != nil {
