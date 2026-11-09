@@ -46,6 +46,7 @@ type commonFlags struct {
 	compactResults  bool
 	readDefault     int
 	readMax         int
+	sessionActions  bool
 }
 
 // runtimeBundle is what a successful startup produced, including the parts a
@@ -300,6 +301,7 @@ func addCommonFlags(flags *flag.FlagSet) *commonFlags {
 	flags.BoolVar(&common.compactResults, "compact-results", envBool("HERDR_MCP_COMPACT_RESULTS", false), "return only text content for tools without an outputSchema, strip whitespace, and reduce agent_list to a summary (agent_get keeps every field)")
 	flags.IntVar(&common.readDefault, "read-default-lines", envInt("HERDR_MCP_READ_DEFAULT_LINES", 0), "lines agent_read and pane_read return when the caller omits lines; zero passes the omission to Herdr, or uses --read-max-lines when that is set")
 	flags.IntVar(&common.readMax, "read-max-lines", envInt("HERDR_MCP_READ_MAX_LINES", 0), "cap on lines for agent_read and pane_read, noted in the result when applied, and the default when --read-default-lines is unset; zero disables")
+	flags.BoolVar(&common.sessionActions, "session-actions", envBool("HERDR_MCP_SESSION_ACTIONS", false), "add session_clear, session_compact and session_restart for idle Claude Code panes, independent of --allow-methods")
 	return common
 }
 
@@ -376,6 +378,7 @@ func buildRuntime(ctx context.Context, flags commonFlags, strict bool) (*runtime
 		CompactResults:   flags.compactResults,
 		ReadDefaultLines: flags.readDefault,
 		ReadMaxLines:     flags.readMax,
+		SessionActions:   flags.sessionActions,
 	}
 	if flags.machines {
 		runtimeDir, dirErr := herdr.DefaultRuntimeDir()

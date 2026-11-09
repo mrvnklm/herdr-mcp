@@ -68,6 +68,13 @@ type Server struct {
 	readDefaultLines int
 	readMaxLines     int
 
+	// sessionMu and lastSessionAction allow one session_* action at a time and
+	// space them apart, across all panes.
+	sessionMu         sync.Mutex
+	lastSessionAction time.Time
+	sessionCooldown   time.Duration
+	sessionExitWait   time.Duration
+
 	// mu guards the fields Reload swaps while calls are in flight.
 	mu      sync.Mutex
 	allow   []string
@@ -95,6 +102,9 @@ type Options struct {
 	// ReadMaxLines set, an omitted lines becomes ReadMaxLines.
 	ReadDefaultLines int
 	ReadMaxLines     int
+	// SessionActions adds session_clear, session_compact and session_restart.
+	// They send only fixed strings and are independent of Allow and Deny.
+	SessionActions bool
 }
 
 // New registers one MCP tool for every selected method in the Herdr request schema.
@@ -117,6 +127,9 @@ func New(options Options) (*Server, error) {
 		compactResults:   options.CompactResults,
 		readDefaultLines: options.ReadDefaultLines,
 		readMaxLines:     options.ReadMaxLines,
+
+		sessionCooldown: defaultSessionCooldown,
+		sessionExitWait: defaultSessionExitWait,
 	}
 	// A cap without a default must still bound an omitted lines: Herdr's own
 	// default is not part of its schema and may exceed the cap. The default
@@ -129,6 +142,9 @@ func New(options Options) (*Server, error) {
 	}
 	if server.Machines != nil {
 		server.registerMachineList()
+	}
+	if options.SessionActions {
+		server.registerSessionActions()
 	}
 	return server, nil
 }
