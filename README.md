@@ -36,8 +36,9 @@ restored `--allow-methods`.
 | `--access-allowed-emails` | Checks the `email` claim of the Cloudflare Access JWT, fail-closed. |
 
 Build from a clone, because the module path is still upstream's and `go install` would fetch
-upstream. Use a Go toolchain without known standard-library vulnerabilities and check with
-`govulncheck`:
+upstream. The same goes for the `herdr plugin install`, `go install` and `npx skills add`
+commands further down: they are upstream's and install upstream, without these flags. Use a Go
+toolchain without known standard-library vulnerabilities and check with `govulncheck`:
 
 ```bash
 git clone https://github.com/mrvnklm/herdr-mcp && cd herdr-mcp

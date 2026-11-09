@@ -1,3 +1,5 @@
+// Modified from Orange-County-AI/herdr-mcp in this fork. See "What this fork adds" in README.md.
+
 // Package httptransport owns listener, TLS, authentication and browser guards.
 // It is independent of Herdr so configuration fails before session startup.
 package httptransport
