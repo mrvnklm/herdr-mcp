@@ -60,7 +60,8 @@ type Server struct {
 	// session. Nil disables routing and leaves the tool schemas local-only.
 	Machines MachineRouter
 
-	// compactResults drops structuredContent from tools without an outputSchema.
+	// compactResults drops structuredContent from tools without an outputSchema
+	// and shortens agent.list to a summary.
 	compactResults bool
 
 	// mu guards the fields Reload swaps while calls are in flight.
@@ -82,7 +83,8 @@ type Options struct {
 	Machines MachineRouter
 	// CompactResults returns only the text content for tools that declare no
 	// outputSchema. Without it every result carries the same JSON twice, once
-	// as text and once as structuredContent.
+	// as text and once as structuredContent. It also reduces agent_list to a
+	// per-agent summary and strips whitespace from every result.
 	CompactResults bool
 }
 
@@ -135,7 +137,7 @@ func (s *Server) register(schema *herdr.Schema) error {
 		tool := &mcp.Tool{
 			Name:        definition.ToolName,
 			Title:       toolTitle(definition.Method),
-			Description: toolDescription(definition.Method, definition.InputSchema),
+			Description: s.describe(definition.Method, definition.InputSchema),
 			InputSchema: definition.InputSchema,
 			Annotations: annotations(definition.Method),
 		}
@@ -283,6 +285,10 @@ func (s *Server) dispatch(ctx context.Context, method string, input map[string]a
 		if readinessNote != "" {
 			notes = append(notes, readinessNote)
 		}
+	}
+
+	if s.compactResults {
+		result = compactResult(method, result)
 	}
 
 	var structured map[string]any
