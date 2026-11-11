@@ -116,13 +116,20 @@ type Options struct {
 	SessionActions bool
 }
 
+func serverInstructions(options Options) string {
+	if options.MaxWaitMS > 0 {
+		return instructions + nonBlockingInstructions
+	}
+	return instructions
+}
+
 // New registers one MCP tool for every selected method in the Herdr request schema.
 func New(options Options) (*Server, error) {
 	mcpServer := mcp.NewServer(&mcp.Implementation{
 		Name:    "herdr-mcp",
 		Title:   "Herdr socket API",
 		Version: options.Version,
-	}, &mcp.ServerOptions{Instructions: instructions})
+	}, &mcp.ServerOptions{Instructions: serverInstructions(options)})
 
 	server := &Server{
 		MCP:      mcpServer,
@@ -328,6 +335,18 @@ func (s *Server) dispatch(ctx context.Context, method string, input map[string]a
 		}
 	}
 	result, err := caller.Call(ctx, method, normalized)
+	if err != nil && method == "agent.wait" {
+		if status, ok := s.waitTimedOut(ctx, caller, normalized, err); ok {
+			result, err = status, nil
+			notes = append(notes, stillWorkingNote)
+		}
+	}
+	if err != nil && method == "agent.read" {
+		if visible, ok := s.readVisibleInstead(ctx, caller, normalized, err); ok {
+			result, err = visible, nil
+			notes = append(notes, visibleFallbackNote)
+		}
+	}
 	if err != nil {
 		if strings.HasPrefix(method, "agent.") {
 			err = s.enrichAgentError(ctx, caller, method, normalized, err)

@@ -45,6 +45,9 @@ func (s *Server) describe(method string, input map[string]any) string {
 	if description, ok := compactToolDescriptions[method]; ok && s.compactResults {
 		return description + inputSummary(input)
 	}
+	if method == "agent.wait" && s.maxWaitMS > 0 {
+		return fmt.Sprintf("Wait at most %d ms for a running agent to reach idle, done, blocked, or another requested status, then return its current status; an expired wait is not an error. Agents often work for minutes: do not call this in a loop. If the agent is still working, tell the user and check again only when they ask.", s.maxWaitMS) + inputSummary(input)
+	}
 	return toolDescription(method, input)
 }
 

@@ -153,10 +153,10 @@ func TestPromptWaitNoteOnlyAfterTheSend(t *testing.T) {
 		}
 		return result.IsError, all.String()
 	}
-	if failed, got := text(errors.New("agent_blocked")); !failed || strings.Contains(got, "Sent without waiting") {
+	if failed, got := text(errors.New("agent_blocked")); !failed || strings.Contains(got, "sent without waiting") {
 		t.Fatalf("failed prompt: isError=%v, %q", failed, got)
 	}
-	if failed, got := text(nil); failed || !strings.Contains(got, "Sent without waiting") || !strings.Contains(got, "until") {
+	if failed, got := text(nil); failed || !strings.Contains(got, "Prompt sent without waiting") || !strings.Contains(got, "Do not poll") {
 		t.Fatalf("sent prompt: isError=%v, %q", failed, got)
 	}
 }
