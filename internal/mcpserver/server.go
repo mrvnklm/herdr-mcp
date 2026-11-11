@@ -329,17 +329,31 @@ func (s *Server) dispatch(ctx context.Context, method string, input map[string]a
 	if err != nil {
 		return errorResult(method, err, notes...)
 	}
+	var expired json.RawMessage
 	if method == "agent.wait" {
+		launchStarted := time.Now()
 		if err := s.waitThroughLaunch(ctx, caller, normalized); err != nil {
-			return errorResult(method, err, notes...)
+			if s.maxWaitMS <= 0 {
+				return errorResult(method, err, notes...)
+			}
+			var expiredNote string
+			expired, expiredNote = s.waitExpired(ctx, caller, normalized, true)
+			notes = append(notes, expiredNote)
+		} else if s.maxWaitMS > 0 {
+			normalized = remainingWait(normalized, time.Since(launchStarted))
 		}
 	}
-	result, err := caller.Call(ctx, method, normalized)
-	if err != nil && method == "agent.wait" {
-		if status, ok := s.waitTimedOut(ctx, caller, normalized, err); ok {
-			result, err = status, nil
-			notes = append(notes, stillWorkingNote)
-		}
+	var result json.RawMessage
+	if expired != nil {
+		result = expired
+	} else {
+		result, err = caller.Call(ctx, method, normalized)
+	}
+	if err != nil && method == "agent.wait" && s.maxWaitMS > 0 && apiErrorCode(err) == "timeout" {
+		var expiredNote string
+		result, expiredNote = s.waitExpired(ctx, caller, normalized, false)
+		err = nil
+		notes = append(notes, expiredNote)
 	}
 	if err != nil && method == "agent.read" {
 		if visible, ok := s.readVisibleInstead(ctx, caller, normalized, err); ok {
