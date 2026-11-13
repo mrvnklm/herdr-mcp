@@ -80,6 +80,14 @@ type Server struct {
 	lastSessionAction time.Time
 	sessionCooldown   time.Duration
 	sessionExitWait   time.Duration
+	// sessionNewStarts holds the session_new starts of the last hour, under
+	// sessionMu, against sessionNewPerHour.
+	sessionNewStarts    []time.Time
+	sessionNewPerHour   int
+	sessionNewArgs      []string
+	sessionNewSettle    time.Duration
+	sessionNewReadyWait time.Duration
+	sessionNewGoneAfter time.Duration
 
 	// mu guards the fields Reload swaps while calls are in flight.
 	mu      sync.Mutex
@@ -114,6 +122,13 @@ type Options struct {
 	// SessionActions adds session_clear, session_compact and session_restart.
 	// They send only fixed strings and are independent of Allow and Deny.
 	SessionActions bool
+	// SessionNew adds session_new: a new Claude Code session in a new tab,
+	// beside an existing one. It shares the cooldown of the session actions
+	// and allows defaultSessionNewPerHour starts per hour.
+	SessionNew bool
+	// SessionNewArgs are the arguments every new Claude gets, set by the
+	// operator; callers cannot add any.
+	SessionNewArgs []string
 }
 
 func serverInstructions(options Options) string {
@@ -148,6 +163,12 @@ func New(options Options) (*Server, error) {
 
 		sessionCooldown: defaultSessionCooldown,
 		sessionExitWait: defaultSessionExitWait,
+
+		sessionNewPerHour:   defaultSessionNewPerHour,
+		sessionNewArgs:      append([]string{}, options.SessionNewArgs...),
+		sessionNewSettle:    defaultSessionNewSettle,
+		sessionNewReadyWait: defaultSessionNewReadyWait,
+		sessionNewGoneAfter: defaultSessionNewGoneAfter,
 	}
 	// A cap without a default must still bound an omitted lines: Herdr's own
 	// default is not part of its schema and may exceed the cap. The default
@@ -163,6 +184,9 @@ func New(options Options) (*Server, error) {
 	}
 	if options.SessionActions {
 		server.registerSessionActions()
+	}
+	if options.SessionNew {
+		server.registerSessionNew()
 	}
 	return server, nil
 }

@@ -46,6 +46,16 @@ type fakeHerdrSocket struct {
 	exited        bool
 	// hold, when set, blocks agent.get until closed.
 	hold chan struct{}
+	// startError, when set, is the error code agent.start answers with.
+	startError string
+	// newAgent, when set, answers agent.get for the new pane w1:p9; empty
+	// answers agent_not_found there.
+	newAgent string
+	// tabCreate, when set, replaces the tab.create result.
+	tabCreate string
+	// newProcesses answers pane.process_info for the new pane w1:p9 in
+	// order and then repeats its last entry.
+	newProcesses []string
 }
 
 func (f *fakeHerdrSocket) serve(t *testing.T) *herdr.Client {
@@ -89,6 +99,13 @@ func (f *fakeHerdrSocket) answer(method string, params map[string]any) string {
 	result := `{"type":"ok"}`
 	switch method {
 	case "agent.get":
+		if params["target"] == "w1:p9" {
+			if f.newAgent == "" {
+				return `{"id":"t","error":{"code":"agent_not_found","message":"no agent"}}`
+			}
+			result = f.newAgent
+			break
+		}
 		if f.agent == "" {
 			return `{"id":"t","error":{"code":"agent_not_found","message":"no agent"}}`
 		}
@@ -98,6 +115,23 @@ func (f *fakeHerdrSocket) answer(method string, params map[string]any) string {
 		if f.exited {
 			result = f.after
 		}
+		if params["pane_id"] == "w1:p9" && len(f.newProcesses) > 0 {
+			result = f.newProcesses[0]
+			if len(f.newProcesses) > 1 {
+				f.newProcesses = f.newProcesses[1:]
+			}
+		}
+	case "tab.create":
+		if f.tabCreate != "" {
+			result = f.tabCreate
+			break
+		}
+		result = `{"type":"tab_created","tab":{"tab_id":"w1:t4","workspace_id":"w1","number":4,"label":"4","focused":false,"pane_count":1,"agent_status":"unknown"},"root_pane":{"pane_id":"w1:p9","terminal_id":"term_9","tab_id":"w1:t4","workspace_id":"w1","focused":false,"agent_status":"unknown","revision":0}}`
+	case "agent.start":
+		if f.startError != "" {
+			return fmt.Sprintf(`{"id":"t","error":{"code":%q,"message":"start failed"}}`, f.startError)
+		}
+		result = `{"type":"agent_started","agent":{"pane_id":"w1:p9"},"argv":["claude"]}`
 	case "agent.prompt":
 		if params["text"] == "/exit" {
 			f.exited = true

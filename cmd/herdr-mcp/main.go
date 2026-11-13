@@ -49,6 +49,8 @@ type commonFlags struct {
 	readDefault     int
 	readMax         int
 	sessionActions  bool
+	sessionNew      bool
+	sessionNewArgs  string
 	maxWait         int
 }
 
@@ -305,6 +307,8 @@ func addCommonFlags(flags *flag.FlagSet) *commonFlags {
 	flags.IntVar(&common.readDefault, "read-default-lines", envInt("HERDR_MCP_READ_DEFAULT_LINES", 0), "lines agent_read and pane_read return when the caller omits lines; zero passes the omission to Herdr, or uses --read-max-lines when that is set")
 	flags.IntVar(&common.readMax, "read-max-lines", envInt("HERDR_MCP_READ_MAX_LINES", 0), "cap on lines for agent_read and pane_read, noted in the result when applied, and the default when --read-default-lines is unset; zero disables")
 	flags.BoolVar(&common.sessionActions, "session-actions", envBool("HERDR_MCP_SESSION_ACTIONS", false), "add session_clear, session_compact and session_restart for idle Claude Code panes, independent of --allow-methods")
+	flags.BoolVar(&common.sessionNew, "session-new", envBool("HERDR_MCP_SESSION_NEW", false), "add session_new, which starts Claude Code in a new tab beside an existing Claude session; at most 3 per hour, sharing the cooldown of --session-actions")
+	flags.StringVar(&common.sessionNewArgs, "session-new-args", os.Getenv("HERDR_MCP_SESSION_NEW_ARGS"), "space-separated arguments for every Claude that session_new starts, e.g. --session-new-args=--dangerously-skip-permissions")
 	flags.IntVar(&common.maxWait, "max-wait-ms", envInt("HERDR_MCP_MAX_WAIT_MS", 0), "fill in and cap timeout_ms on agent_wait and drop wait from agent_prompt; waiting through a launch can take twice this; zero disables")
 	return common
 }
@@ -383,6 +387,8 @@ func buildRuntime(ctx context.Context, flags commonFlags, strict bool) (*runtime
 		ReadDefaultLines: flags.readDefault,
 		ReadMaxLines:     flags.readMax,
 		SessionActions:   flags.sessionActions,
+		SessionNew:       flags.sessionNew,
+		SessionNewArgs:   strings.Fields(flags.sessionNewArgs),
 		MaxWaitMS:        flags.maxWait,
 	}
 	if flags.machines {

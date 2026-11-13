@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"regexp"
 	"time"
 
@@ -39,7 +38,7 @@ var (
 	sessionTargetPattern = regexp.MustCompile(`^w[0-9A-Za-z]+:p[0-9A-Za-z]+$`)
 	sessionUUIDPattern   = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
-	errSessionBusy = errors.New("Another session action is running. Try again in a few seconds.")
+	errSessionBusy = errors.New("Another session action is running right now. Tell the user instead of retrying.")
 )
 
 // sessionAction is one fixed tool. command is the only text it can ever send,
@@ -118,9 +117,8 @@ func (s *Server) runSessionAction(ctx context.Context, action sessionAction, arg
 		return errorResult(action.tool, errSessionBusy)
 	}
 	defer s.sessionMu.Unlock()
-	if !s.lastSessionAction.IsZero() && time.Since(s.lastSessionAction) < s.sessionCooldown {
-		remaining := s.sessionCooldown - time.Since(s.lastSessionAction)
-		return errorResult(action.tool, fmt.Errorf("Another session action just ran. Try again in %d seconds.", int(math.Ceil(remaining.Seconds()))))
+	if err := s.sessionCooldownError(); err != nil {
+		return errorResult(action.tool, err)
 	}
 
 	// A client that hangs up after /exit must not cancel the resume, or the
@@ -145,7 +143,7 @@ func (s *Server) runSessionAction(ctx context.Context, action sessionAction, arg
 
 	// Typed while Claude still runs, this line would land as a prompt in the
 	// session, so only a positive shell signal may lead past this point.
-	if !s.waitForShell(ctx, target) {
+	if !s.waitForShell(ctx, target, s.sessionExitWait) {
 		return errorResult(action.tool, fmt.Errorf("Sent /exit to %s, but the shell did not come back in time. Claude was not restarted and nothing else was typed. Please check the pane.", target))
 	}
 	if _, err := s.Client.Call(ctx, "pane.send_input", sessionParams(map[string]any{
@@ -261,9 +259,9 @@ func (s *Server) submitSlashCommand(ctx context.Context, target, command string)
 }
 
 // waitForShell reports whether the pane's shell took the foreground back within
-// the exit budget. Transient read errors just keep it polling.
-func (s *Server) waitForShell(ctx context.Context, target string) bool {
-	deadline := time.Now().Add(s.sessionExitWait)
+// wait. Transient read errors just keep it polling.
+func (s *Server) waitForShell(ctx context.Context, target string, wait time.Duration) bool {
+	deadline := time.Now().Add(wait)
 	for {
 		if info, err := s.paneProcesses(ctx, target); err == nil && info.shellInForeground() {
 			return true
