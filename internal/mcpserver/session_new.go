@@ -142,15 +142,10 @@ func (s *Server) runSessionNew(ctx context.Context, arguments json.RawMessage) *
 		return s.closeSessionNewTab(ctx, tab.Tab.TabID, errors.New("the shell in the new tab did not become ready"))
 	}
 
-	// agent.start types claude plus the operator's arguments into the new
-	// shell; nothing from the caller reaches it.
-	_, err = s.Client.Call(ctx, "agent.start", sessionParams(map[string]any{
-		"name":       name,
-		"kind":       "claude",
-		"pane_id":    pane,
-		"args":       s.sessionNewArgs,
-		"timeout_ms": sessionNewStartTimeout.Milliseconds(),
-	}))
+	err = s.startNewSessionAgent(ctx, pane, name)
+	if isHerdrError(err, "agent_pane_busy") {
+		return s.closeSessionNewTab(ctx, tab.Tab.TabID, fmt.Errorf("the shell in the new tab stayed busy: %w", err))
+	}
 	var apiErr *herdr.APIError
 	if err != nil && !(errors.As(err, &apiErr) && apiErr.Code == "agent_not_ready") {
 		// Herdr refused or lost the launch. Only a shell back in front proves
@@ -175,6 +170,41 @@ func (s *Server) runSessionNew(ctx context.Context, arguments json.RawMessage) *
 	default:
 		return sessionActionResult(fmt.Sprintf("Claude was launched in %s (directory %s) but was not ready yet. Check it once with agent_get before sending a prompt; if it is blocked, tell the user.", pane, cwd))
 	}
+}
+
+// startNewSessionAgent types claude plus the operator's arguments into the
+// new shell; nothing from the caller reaches it. A fresh zsh still runs its
+// startup files and hands the foreground back and forth meanwhile (measured
+// 2026-11-17: shell in front, then agent_pane_busy 0.1 s later), so a busy
+// pane is retried until sessionNewSettle runs out. Herdr answers busy before
+// it touches the pane, which makes the retry safe.
+func (s *Server) startNewSessionAgent(ctx context.Context, pane, name string) error {
+	deadline := time.Now().Add(s.sessionNewSettle)
+	for busy := 0; ; busy++ {
+		_, err := s.Client.Call(ctx, "agent.start", sessionParams(map[string]any{
+			"name":       name,
+			"kind":       "claude",
+			"pane_id":    pane,
+			"args":       s.sessionNewArgs,
+			"timeout_ms": sessionNewStartTimeout.Milliseconds(),
+		}))
+		if !isHerdrError(err, "agent_pane_busy") || !time.Now().Before(deadline) {
+			if busy > 0 {
+				s.logLine("session_new: agent.start on %s answered busy %d times", pane, busy)
+			}
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(sessionExitPoll):
+		}
+	}
+}
+
+func isHerdrError(err error, code string) bool {
+	var apiErr *herdr.APIError
+	return errors.As(err, &apiErr) && apiErr.Code == code
 }
 
 type newSessionState int

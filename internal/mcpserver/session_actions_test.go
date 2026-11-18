@@ -48,6 +48,9 @@ type fakeHerdrSocket struct {
 	hold chan struct{}
 	// startError, when set, is the error code agent.start answers with.
 	startError string
+	// startBusy answers that many agent.start calls with agent_pane_busy
+	// before startError or success applies.
+	startBusy int
 	// newAgent, when set, answers agent.get for the new pane w1:p9; empty
 	// answers agent_not_found there.
 	newAgent string
@@ -128,6 +131,10 @@ func (f *fakeHerdrSocket) answer(method string, params map[string]any) string {
 		}
 		result = `{"type":"tab_created","tab":{"tab_id":"w1:t4","workspace_id":"w1","number":4,"label":"4","focused":false,"pane_count":1,"agent_status":"unknown"},"root_pane":{"pane_id":"w1:p9","terminal_id":"term_9","tab_id":"w1:t4","workspace_id":"w1","focused":false,"agent_status":"unknown","revision":0}}`
 	case "agent.start":
+		if f.startBusy > 0 {
+			f.startBusy--
+			return `{"id":"t","error":{"code":"agent_pane_busy","message":"agent target pane w1:p9 is not an available shell"}}`
+		}
 		if f.startError != "" {
 			return fmt.Sprintf(`{"id":"t","error":{"code":%q,"message":"start failed"}}`, f.startError)
 		}

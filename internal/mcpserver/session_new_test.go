@@ -269,7 +269,7 @@ func TestSessionNewClosesTheTabWhenHerdrRefusesTheStart(t *testing.T) {
 // Claude in front means it may still come up: closing the tab would kill it.
 func TestSessionNewKeepsATabWhereClaudeRuns(t *testing.T) {
 	fake := healthyFake()
-	fake.startError = "agent_pane_busy"
+	fake.startError = "agent_start_input_failed"
 	session := connectTestClient(t, newSessionNewServer(t, fake))
 	result := callSessionTool(t, session, sessionNewTool, sessionArgs())
 	if !result.IsError || !strings.Contains(resultText(result), "may still be starting in "+sessionNewTestPane) {
@@ -340,6 +340,44 @@ func TestSessionNewWaitsForTheFreshShell(t *testing.T) {
 	if starts := callsTo(fake, "agent.start"); len(starts) != 1 {
 		t.Fatalf("agent.start calls = %+v", starts)
 	}
+}
+
+// Measured 2026-11-17: the shell was in front, and Herdr still answered
+// agent_pane_busy 0.1 s later while zsh went on with its startup files.
+func TestSessionNewRetriesWhileTheFreshShellIsBusy(t *testing.T) {
+	fake := healthyFake()
+	fake.newProcesses = []string{newPaneShell, newPaneShell, newPaneShell, newPaneClaude}
+	fake.startBusy = 2
+	session := connectTestClient(t, newSessionNewServer(t, fake))
+	result := callSessionTool(t, session, sessionNewTool, sessionArgs())
+	if result.IsError || !strings.Contains(resultText(result), "It is idle") {
+		t.Fatalf("result = %s", resultText(result))
+	}
+	if starts := callsTo(fake, "agent.start"); len(starts) != 3 {
+		t.Fatalf("agent.start calls = %+v", starts)
+	}
+	assertTabKept(t, fake)
+}
+
+// Busy means Herdr typed nothing, so the empty tab goes once the wait is up.
+func TestSessionNewClosesTheTabWhenTheShellStaysBusy(t *testing.T) {
+	fake := healthyFake()
+	fake.newProcesses = []string{newPaneShell}
+	fake.startError = "agent_pane_busy"
+	server := newSessionNewServer(t, fake)
+	session := connectTestClient(t, server)
+	started := time.Now()
+	result := callSessionTool(t, session, sessionNewTool, sessionArgs())
+	if text := resultText(result); !result.IsError || !strings.Contains(text, "stayed busy") || !strings.Contains(text, "closed again") {
+		t.Fatalf("result = %s", text)
+	}
+	if elapsed := time.Since(started); elapsed > 2*server.sessionNewSettle+time.Second {
+		t.Fatalf("took %s", elapsed)
+	}
+	if starts := callsTo(fake, "agent.start"); len(starts) < 2 {
+		t.Fatalf("agent.start calls = %+v", starts)
+	}
+	assertTabClosed(t, fake)
 }
 
 func TestSessionNewClosesATabWhoseShellNeverSettles(t *testing.T) {
