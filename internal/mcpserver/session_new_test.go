@@ -109,7 +109,7 @@ func TestSessionNewStartsClaudeBesideTheSource(t *testing.T) {
 	if len(tabs) != 1 {
 		t.Fatalf("tab.create calls = %+v", tabs)
 	}
-	if params := tabs[0].params; params["workspace_id"] != "w1" || params["cwd"] != sessionNewTestCWD || params["focus"] != false {
+	if params := tabs[0].params; params["workspace_id"] != "w1" || params["cwd"] != sessionNewTestCWD || params["focus"] != false || params["label"] != sessionNewDefaultLabel {
 		t.Fatalf("tab.create params = %v", params)
 	}
 
@@ -171,6 +171,11 @@ func TestSessionNewAcceptsOnlyAPaneIDTarget(t *testing.T) {
 		{},
 		{"target": "my-agent"},
 		{"target": sessionTestPane, "cwd": "/"},
+		{"target": sessionTestPane, "label": "\x1b]0;owned\x07"},
+		{"target": sessionTestPane, "label": "line\nbreak"},
+		{"target": sessionTestPane, "label": "$(id)"},
+		{"target": sessionTestPane, "label": strings.Repeat("a", sessionNewLabelMax+1)},
+		{"target": sessionTestPane, "label": 7},
 	} {
 		if result := callSessionTool(t, session, sessionNewTool, arguments); !result.IsError {
 			t.Fatalf("%v accepted: %s", arguments, resultText(result))
@@ -179,6 +184,37 @@ func TestSessionNewAcceptsOnlyAPaneIDTarget(t *testing.T) {
 	if calls := fake.recorded(); len(calls) != 0 {
 		t.Fatalf("invalid input reached Herdr: %+v", calls)
 	}
+}
+
+// Measured 2026-11-19: a session started from the voice connector sat as an
+// unnamed second tab in a busy workspace, and the user could not find it.
+func TestSessionNewNamesTheTabAndSaysWhereItIs(t *testing.T) {
+	fake := healthyFake()
+	session := connectTestClient(t, newSessionNewServer(t, fake))
+	arguments := map[string]any{"target": sessionTestPane, "label": "  Nordamerika:  USA & Kanada "}
+	result := callSessionTool(t, session, sessionNewTool, arguments)
+	text := resultText(result)
+	if result.IsError || !strings.Contains(text, `workspace "project", tab 4 "Nordamerika: USA & Kanada"`) || !strings.Contains(text, "tell the user where it is") {
+		t.Fatalf("result = %s", text)
+	}
+	if tabs := callsTo(fake, "tab.create"); len(tabs) != 1 || tabs[0].params["label"] != "Nordamerika: USA & Kanada" {
+		t.Fatalf("tab.create calls = %+v", tabs)
+	}
+}
+
+// Without the workspace label the answer still names the workspace by id.
+func TestSessionNewFallsBackToTheWorkspaceID(t *testing.T) {
+	if got := sessionNewWithoutWorkspaceLabel(t); !strings.Contains(got, `workspace "w1", tab 4 "voice"`) {
+		t.Fatalf("result = %s", got)
+	}
+}
+
+func sessionNewWithoutWorkspaceLabel(t *testing.T) string {
+	t.Helper()
+	fake := healthyFake()
+	fake.workspaceError = true
+	session := connectTestClient(t, newSessionNewServer(t, fake))
+	return resultText(callSessionTool(t, session, sessionNewTool, sessionArgs()))
 }
 
 func TestSessionNewSharesTheCooldownBothWays(t *testing.T) {
@@ -423,7 +459,9 @@ func TestSessionNewNeedsItsOwnFlag(t *testing.T) {
 	}
 	input, _ := tool.InputSchema.(map[string]any)
 	properties, _ := input["properties"].(map[string]any)
-	if _, hasTarget := properties["target"]; !hasTarget || len(properties) != 1 {
+	_, hasTarget := properties["target"]
+	label, _ := properties["label"].(map[string]any)
+	if !hasTarget || label == nil || len(properties) != 2 || input["additionalProperties"] != false {
 		t.Fatalf("properties = %v", properties)
 	}
 	if tool.Annotations == nil || tool.Annotations.ReadOnlyHint || tool.Annotations.IdempotentHint {

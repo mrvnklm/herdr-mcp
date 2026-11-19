@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/mrvnklm/herdr-mcp/internal/herdr"
@@ -40,6 +43,11 @@ const (
 	// sessionNewCloseTimeout gives closing an empty tab its own time, so a
 	// spent action budget cannot leave the tab behind.
 	sessionNewCloseTimeout = 3 * time.Second
+	// sessionNewLabelMax keeps a tab label readable in the herdr sidebar.
+	sessionNewLabelMax = 32
+	// sessionNewDefaultLabel marks a tab started without a label, so the user
+	// can still tell it apart from tabs they opened themselves.
+	sessionNewDefaultLabel = "voice"
 )
 
 var (
@@ -50,7 +58,24 @@ var (
 	sessionNewTerminalPattern = regexp.MustCompile(`^term_[0-9a-z]{1,23}$`)
 )
 
-const sessionNewDescription = "Start a new Claude Code session in a new tab, in the same workspace and directory as an existing Claude session. The existing session is not touched. Input: target (pane id of an existing Claude session, such as w1:p2). Returns the pane id of the new session; send its first prompt with agent_prompt."
+const sessionNewDescription = "Start a new Claude Code session in a new tab, in the same workspace and directory as an existing Claude session. The existing session is not touched. Input: target (pane id of an existing Claude session, such as w1:p2) and label (a short topic such as \"North America\", shown as the tab name so the user finds the session later). Returns the pane id, workspace and tab of the new session; tell the user where it is, and send its first prompt with agent_prompt."
+
+var sessionNewSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"target": map[string]any{
+			"type":        "string",
+			"description": "Pane id of an existing Claude session, such as w1:p2.",
+		},
+		"label": map[string]any{
+			"type":        "string",
+			"maxLength":   sessionNewLabelMax,
+			"description": "Short topic of the new session, shown as its tab name. Letters, digits, spaces and - _ . , : & / ( ) + only.",
+		},
+	},
+	"required":             []any{"target"},
+	"additionalProperties": false,
+}
 
 // registerSessionNew adds session_new. Like the other session tools it sits
 // outside register, so Reload leaves it in place and --allow-methods does not
@@ -62,7 +87,7 @@ func (s *Server) registerSessionNew() {
 		Name:        sessionNewTool,
 		Title:       "Session New",
 		Description: sessionNewDescription,
-		InputSchema: sessionActionSchema,
+		InputSchema: sessionNewSchema,
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint:    false,
 			IdempotentHint:  false,
@@ -79,7 +104,7 @@ func (s *Server) registerSessionNew() {
 }
 
 func (s *Server) runSessionNew(ctx context.Context, arguments json.RawMessage) *mcp.CallToolResult {
-	target, err := sessionTarget(arguments)
+	target, label, err := sessionNewArguments(arguments)
 	if err != nil {
 		return errorResult(sessionNewTool, err)
 	}
@@ -108,6 +133,7 @@ func (s *Server) runSessionNew(ctx context.Context, arguments json.RawMessage) *
 		"workspace_id": workspace,
 		"cwd":          cwd,
 		"focus":        false,
+		"label":        label,
 	}))
 	if err != nil {
 		return errorResult(sessionNewTool, fmt.Errorf("Herdr could not open a tab in the workspace of %s: %w", target, err))
@@ -122,7 +148,8 @@ func (s *Server) runSessionNew(ctx context.Context, arguments json.RawMessage) *
 
 	var tab struct {
 		Tab struct {
-			TabID string `json:"tab_id"`
+			TabID  string `json:"tab_id"`
+			Number int    `json:"number"`
 		} `json:"tab"`
 		RootPane struct {
 			PaneID     string `json:"pane_id"`
@@ -134,6 +161,7 @@ func (s *Server) runSessionNew(ctx context.Context, arguments json.RawMessage) *
 	}
 	pane := tab.RootPane.PaneID
 	name := sessionNewName(tab.RootPane.TerminalID)
+	where := s.sessionNewLocation(ctx, workspace, tab.Tab.Number, label)
 	if !sessionTargetPattern.MatchString(pane) || !sessionNewTerminalPattern.MatchString(tab.RootPane.TerminalID) || !sessionNewNamePattern.MatchString(name) {
 		return s.closeSessionNewTab(ctx, tab.Tab.TabID, errors.New("Herdr returned no usable pane or terminal id for the new tab"))
 	}
@@ -162,13 +190,13 @@ func (s *Server) runSessionNew(ctx context.Context, arguments json.RawMessage) *
 	// and the pane's foreground process tell these apart.
 	switch s.waitForNewSession(ctx, pane) {
 	case newSessionReady:
-		return sessionActionResult(fmt.Sprintf("Started a new Claude session in %s (directory %s). It is idle; send its first prompt with agent_prompt and target %s.", pane, cwd, pane))
+		return sessionActionResult(fmt.Sprintf("Started a new Claude session in %s (%s, directory %s). It is idle; send its first prompt with agent_prompt and target %s, and tell the user where it is.", pane, where, cwd, pane))
 	case newSessionBlocked:
-		return sessionActionResult(fmt.Sprintf("Claude started in %s but is waiting for an answer on its screen, such as trusting the folder, before it accepts prompts. Tell the user; do not answer it and do not prompt it.", pane))
+		return sessionActionResult(fmt.Sprintf("Claude started in %s (%s) but is waiting for an answer on its screen, such as trusting the folder, before it accepts prompts. Tell the user; do not answer it and do not prompt it.", pane, where))
 	case newSessionGone:
 		return s.closeSessionNewTab(ctx, tab.Tab.TabID, errors.New("Claude exited right after it was launched"))
 	default:
-		return sessionActionResult(fmt.Sprintf("Claude was launched in %s (directory %s) but was not ready yet. Check it once with agent_get before sending a prompt; if it is blocked, tell the user.", pane, cwd))
+		return sessionActionResult(fmt.Sprintf("Claude was launched in %s (%s, directory %s) but was not ready yet. Check it once with agent_get before sending a prompt; if it is blocked, tell the user.", pane, where, cwd))
 	}
 }
 
@@ -205,6 +233,56 @@ func (s *Server) startNewSessionAgent(ctx context.Context, pane, name string) er
 func isHerdrError(err error, code string) bool {
 	var apiErr *herdr.APIError
 	return errors.As(err, &apiErr) && apiErr.Code == code
+}
+
+// sessionNewArguments reads target and the optional tab label. The label is
+// the only caller text session_new passes on, and only as a tab name: no
+// control characters or escapes, nothing a terminal could interpret.
+func sessionNewArguments(arguments json.RawMessage) (string, string, error) {
+	var decoded struct {
+		Target string `json:"target"`
+		Label  string `json:"label"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(arguments))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&decoded); err != nil || !sessionTargetPattern.MatchString(decoded.Target) {
+		return "", "", errors.New("target must be exactly one pane id such as w1:p2, and label the only other field.")
+	}
+	labelError := fmt.Errorf("label must be at most %d letters, digits, spaces or - _ . , : & / ( ) +, such as \"North America\".", sessionNewLabelMax)
+	// Control characters are refused before spaces are folded, so a newline
+	// or an escape sequence never turns into a harmless-looking label.
+	if strings.IndexFunc(decoded.Label, unicode.IsControl) >= 0 {
+		return "", "", labelError
+	}
+	label := strings.Join(strings.Fields(decoded.Label), " ")
+	if label == "" {
+		return decoded.Target, sessionNewDefaultLabel, nil
+	}
+	if utf8.RuneCountInString(label) > sessionNewLabelMax || strings.IndexFunc(label, func(r rune) bool { return !sessionNewLabelRune(r) }) >= 0 {
+		return "", "", labelError
+	}
+	return decoded.Target, label, nil
+}
+
+func sessionNewLabelRune(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == ' ' || strings.ContainsRune("-_.,:&/()+", r)
+}
+
+// sessionNewLocation names the workspace and tab the way the herdr sidebar
+// shows them. Without the workspace label it falls back to the id.
+func (s *Server) sessionNewLocation(ctx context.Context, workspace string, tab int, label string) string {
+	name := workspace
+	if result, err := s.Client.Call(ctx, "workspace.get", sessionParams(map[string]string{"workspace_id": workspace})); err == nil {
+		var response struct {
+			Workspace struct {
+				Label string `json:"label"`
+			} `json:"workspace"`
+		}
+		if json.Unmarshal(result, &response) == nil && response.Workspace.Label != "" {
+			name = response.Workspace.Label
+		}
+	}
+	return fmt.Sprintf("workspace %q, tab %d %q", name, tab, label)
 }
 
 type newSessionState int

@@ -51,6 +51,8 @@ type fakeHerdrSocket struct {
 	// startBusy answers that many agent.start calls with agent_pane_busy
 	// before startError or success applies.
 	startBusy int
+	// workspaceError makes workspace.get fail.
+	workspaceError bool
 	// newAgent, when set, answers agent.get for the new pane w1:p9; empty
 	// answers agent_not_found there.
 	newAgent string
@@ -130,6 +132,11 @@ func (f *fakeHerdrSocket) answer(method string, params map[string]any) string {
 			break
 		}
 		result = `{"type":"tab_created","tab":{"tab_id":"w1:t4","workspace_id":"w1","number":4,"label":"4","focused":false,"pane_count":1,"agent_status":"unknown"},"root_pane":{"pane_id":"w1:p9","terminal_id":"term_9","tab_id":"w1:t4","workspace_id":"w1","focused":false,"agent_status":"unknown","revision":0}}`
+	case "workspace.get":
+		if f.workspaceError {
+			return `{"id":"t","error":{"code":"workspace_not_found","message":"no workspace"}}`
+		}
+		result = `{"type":"workspace_info","workspace":{"workspace_id":"w1","number":1,"label":"project","tab_count":4}}`
 	case "agent.start":
 		if f.startBusy > 0 {
 			f.startBusy--
