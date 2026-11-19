@@ -408,6 +408,7 @@ func buildRuntime(ctx context.Context, flags commonFlags, strict bool) (*runtime
 			bundle.Notes = append(bundle.Notes, fmt.Sprintf("app tools disabled: %v", socketErr))
 		} else {
 			options.Core = core.New(flags.hcBinary, socket)
+			bundle.Notes = append(bundle.Notes, fmt.Sprintf("app: app_* tools through %s on %s", flags.hcBinary, socket))
 		}
 	}
 	if flags.machines {
