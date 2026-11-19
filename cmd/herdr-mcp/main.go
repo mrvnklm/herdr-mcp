@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/mrvnklm/herdr-mcp/internal/core"
 	"github.com/mrvnklm/herdr-mcp/internal/herdr"
 	"github.com/mrvnklm/herdr-mcp/internal/httptransport"
 	"github.com/mrvnklm/herdr-mcp/internal/mcpserver"
@@ -51,6 +52,9 @@ type commonFlags struct {
 	sessionActions  bool
 	sessionNew      bool
 	sessionNewArgs  string
+	app             bool
+	hcBinary        string
+	hcSocket        string
 	maxWait         int
 }
 
@@ -309,6 +313,9 @@ func addCommonFlags(flags *flag.FlagSet) *commonFlags {
 	flags.BoolVar(&common.sessionActions, "session-actions", envBool("HERDR_MCP_SESSION_ACTIONS", false), "add session_clear, session_compact and session_restart for idle Claude Code panes, independent of --allow-methods")
 	flags.BoolVar(&common.sessionNew, "session-new", envBool("HERDR_MCP_SESSION_NEW", false), "add session_new, which starts Claude Code in a new tab beside an existing Claude session; at most 3 per hour, sharing the cooldown of --session-actions")
 	flags.StringVar(&common.sessionNewArgs, "session-new-args", os.Getenv("HERDR_MCP_SESSION_NEW_ARGS"), "space-separated arguments for every Claude that session_new starts, e.g. --session-new-args=--dangerously-skip-permissions")
+	flags.BoolVar(&common.app, "app", envBool("HERDR_MCP_APP", false), "add app_list, app_get, app_read, app_wait and app_prompt for the sessions of the herdr desktop app, reached through herdr-core's hc command line")
+	flags.StringVar(&common.hcBinary, "hc-bin", envDefault("HERDR_MCP_HC_BIN", "herdr-core"), "herdr-core (hc) binary used by --app")
+	flags.StringVar(&common.hcSocket, "hc-socket", os.Getenv("HERDR_MCP_HC_SOCKET"), "herdr-core socket that must answer before --app calls hc (default: the HC_SESSION or default session under ~/.local/state/herdr-core); hc would otherwise start a new core")
 	flags.IntVar(&common.maxWait, "max-wait-ms", envInt("HERDR_MCP_MAX_WAIT_MS", 0), "fill in and cap timeout_ms on agent_wait and drop wait from agent_prompt; waiting through a launch can take twice this; zero disables")
 	return common
 }
@@ -390,6 +397,18 @@ func buildRuntime(ctx context.Context, flags commonFlags, strict bool) (*runtime
 		SessionNew:       flags.sessionNew,
 		SessionNewArgs:   strings.Fields(flags.sessionNewArgs),
 		MaxWaitMS:        flags.maxWait,
+	}
+	if flags.app {
+		socket := flags.hcSocket
+		var socketErr error
+		if socket == "" {
+			socket, socketErr = core.DefaultSocket()
+		}
+		if socketErr != nil {
+			bundle.Notes = append(bundle.Notes, fmt.Sprintf("app tools disabled: %v", socketErr))
+		} else {
+			options.Core = core.New(flags.hcBinary, socket)
+		}
 	}
 	if flags.machines {
 		runtimeDir, dirErr := herdr.DefaultRuntimeDir()

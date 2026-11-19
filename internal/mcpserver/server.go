@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/mrvnklm/herdr-mcp/internal/core"
 	"github.com/mrvnklm/herdr-mcp/internal/herdr"
 )
 
@@ -89,6 +90,14 @@ type Server struct {
 	sessionNewReadyWait time.Duration
 	sessionNewGoneAfter time.Duration
 
+	// core reaches the herdr desktop app's sessions for the app_* tools; nil
+	// leaves them out.
+	core *core.Client
+	// appPromptMu guards appPromptTimes, the app_prompt calls of the last
+	// minute, against appPromptsPerMinute.
+	appPromptMu    sync.Mutex
+	appPromptTimes []time.Time
+
 	// mu guards the fields Reload swaps while calls are in flight.
 	mu      sync.Mutex
 	allow   []string
@@ -129,13 +138,20 @@ type Options struct {
 	// SessionNewArgs are the arguments every new Claude gets, set by the
 	// operator; callers cannot add any.
 	SessionNewArgs []string
+	// Core, when set, adds the app_* tools for the sessions of the herdr
+	// desktop app, which live in herdr-core instead of the herdr TUI.
+	Core *core.Client
 }
 
 func serverInstructions(options Options) string {
+	text := instructions
 	if options.MaxWaitMS > 0 {
-		return instructions + nonBlockingInstructions
+		text += nonBlockingInstructions
 	}
-	return instructions
+	if options.Core != nil {
+		text += appInstructions
+	}
+	return text
 }
 
 // New registers one MCP tool for every selected method in the Herdr request schema.
@@ -187,6 +203,10 @@ func New(options Options) (*Server, error) {
 	}
 	if options.SessionNew {
 		server.registerSessionNew()
+	}
+	if options.Core != nil {
+		server.core = options.Core
+		server.registerAppTools()
 	}
 	return server, nil
 }
